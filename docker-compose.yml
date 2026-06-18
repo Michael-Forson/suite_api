@@ -1,0 +1,9 @@
+services:
+  api:
+    build: .
+    container_name: starterpack-api
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env

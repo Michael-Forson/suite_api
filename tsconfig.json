@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "rootDir": "./src",
+    "outDir": "./dist",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "target": "ES2023",
+    "strict": true,
+    "esModuleInterop": true,
+    "ignoreDeprecations": "5.0"
+  },
+  "include": ["src/**/*.ts", "src/types/**/*"],
+  "exclude": [
+    "node_modules",
+    "src/jobs/**/*",
+    "src/scripts/**/*",
+    "src/middleware/common/appAudit.middleware.ts",
+    "src/middleware/admin/**/*"
+  ]
+}
