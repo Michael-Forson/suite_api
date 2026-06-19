@@ -14,11 +14,14 @@ import {
 import {
   AppleAuthRequestBody,
   GoogleAuthRequestBody,
+  LoginRequestBody,
   RefreshTokenRequestBody,
   RegisterRequestBody,
+  RequestPasswordResetBody,
+  ResetPasswordBody,
   SendCodeRequestBody,
   UpdateProfileRequestBody,
-  VerifyCodeRequestBody,
+  VerifyPhoneCodeRequestBody,
 } from "./auth.types.js";
 import {
   isValidCode,
@@ -36,14 +39,17 @@ import {
   sendEmailVerificationCode,
   validateVerificationCode,
 } from "../../../utils/verification.service.js";
-import { sendTemplateEmail } from "../../../utils/emails/email.service.js";
 import { AuthRequest } from "../../../middleware/users/auth.middleware.js";
 import { checkUserAvailability } from "../../../utils/user.utils.js";
 import {
   trackVerificationAttempt,
   resetVerificationAttempts,
 } from "../../../utils/verificationAttempts.js";
-import { hashPassword } from "../../../utils/password.js";
+import { comparePassword, hashPassword } from "../../../utils/password.js";
+import {
+  sendPasswordResetCode,
+  validateAndConsumeResetCode,
+} from "../../../utils/password-reset.service.js";
 
 export const registerUser = asyncHandler(
   async (req: Request, res: Response) => {
@@ -57,11 +63,11 @@ export const registerUser = asyncHandler(
       dob,
     }: RegisterRequestBody = req.body;
 
-    if (!email ||!phone || !password) {
+    if (!firstName || !lastName || !password) {
       res.status(400).json({
         success: false,
         message:
-          "Missing required email,phone or password are required",
+          "Missing required fields: firstName, lastName and password are required",
       });
       return;
     }
@@ -144,7 +150,7 @@ export const registerUser = asyncHandler(
       const user = await prisma.user.create({
         data: {
           firstName: firstName ?? null,
-          lastName:lastName ?? null,
+          lastName: lastName ?? null,
           email: email ?? null,
           phone: phone ?? null,
           password: hashedPassword,
@@ -194,14 +200,294 @@ export const registerUser = asyncHandler(
   },
 );
 
-export const sendVerificationCode = asyncHandler(
+export const loginUser = asyncHandler(async (req: Request, res: Response) => {
+  const { email, phone, password }: LoginRequestBody = req.body;
+
+  if (!password) {
+    res.status(400).json({
+      success: false,
+      message: "Password is required",
+    });
+    return;
+  }
+
+  const identifiers = [email, phone].filter(Boolean);
+  if (identifiers.length !== 1) {
+    res.status(400).json({
+      success: false,
+      message: "Provide exactly one of email or phone",
+    });
+    return;
+  }
+
+  if (email && !isValidEmail(email)) {
+    res.status(400).json({
+      success: false,
+      message: "Invalid email format",
+    });
+    return;
+  }
+
+  if (phone && !isValidPhone(phone)) {
+    res.status(400).json({
+      success: false,
+      message: "Invalid phone format",
+    });
+    return;
+  }
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: phone ? { phone } : { email },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        email: true,
+        phone: true,
+        password: true,
+        gender: true,
+        dob: true,
+        authProvider: true,
+        isActive: true,
+        emailVerifiedAt: true,
+        phoneVerifiedAt: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    if (!user || !user.password) {
+      res.status(401).json({
+        success: false,
+        message: "Invalid credentials",
+      });
+      return;
+    }
+
+    if (!user.isActive) {
+      res.status(403).json({
+        success: false,
+        message: "This account has been deactivated.",
+      });
+      return;
+    }
+
+    const passwordMatches = await comparePassword(password, user.password);
+    if (!passwordMatches) {
+      res.status(401).json({
+        success: false,
+        message: "Invalid credentials",
+      });
+      return;
+    }
+
+    const accessToken = generateAccessToken(user.id, "user");
+    const refreshToken = generateRefreshToken(user.id, "user");
+    const { password: _password, ...safeUser } = user;
+
+    res.status(200).json({
+      success: true,
+      message: "Login successful",
+      data: {
+        user: { ...safeUser, id: safeUser.id.toString() },
+        tokens: { accessToken, refreshToken },
+      },
+    });
+  } catch (error: any) {
+    console.error("Login error:", {
+      message: error.message,
+      code: error.code,
+      stack: error.stack,
+    });
+    res.status(500).json({
+      success: false,
+      message: "An internal server error occurred. Please try again.",
+    });
+  }
+});
+
+export const requestPasswordReset = asyncHandler(
   async (req: Request, res: Response) => {
-    const {
-      phone,
-      email,
-      type,
-      channel = "both",
-    }: SendCodeRequestBody = req.body;
+    const { email, phone }: RequestPasswordResetBody = req.body;
+
+    const identifiers = [email, phone].filter(Boolean);
+    if (identifiers.length !== 1) {
+      res.status(400).json({
+        success: false,
+        message: "Provide exactly one of email or phone",
+      });
+      return;
+    }
+
+    if (email && !isValidEmail(email)) {
+      res.status(400).json({
+        success: false,
+        message: "Invalid email format",
+      });
+      return;
+    }
+
+    if (phone && !isValidPhone(phone)) {
+      res.status(400).json({
+        success: false,
+        message: "Invalid phone format",
+      });
+      return;
+    }
+
+    const identifier = phone || email!;
+    const successMessage =
+      "If an account exists for this contact, a password reset code has been sent.";
+
+    try {
+      const user = await prisma.user.findUnique({
+        where: phone ? { phone } : { email },
+        select: {
+          firstName: true,
+          isActive: true,
+        },
+      });
+
+      if (user?.isActive) {
+        await sendPasswordResetCode(identifier, {
+          firstName: user.firstName ?? undefined,
+        });
+      }
+
+      res.status(200).json({
+        success: true,
+        message: successMessage,
+      });
+    } catch (error: any) {
+      console.error("Password reset request error:", {
+        message: error.message,
+        code: error.code,
+        stack: error.stack,
+      });
+      res.status(500).json({
+        success: false,
+        message: "Failed to send password reset code. Please try again.",
+      });
+    }
+  },
+);
+
+export const resetPassword = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { email, phone, code, password }: ResetPasswordBody = req.body;
+
+    const identifiers = [email, phone].filter(Boolean);
+    if (identifiers.length !== 1) {
+      res.status(400).json({
+        success: false,
+        message: "Provide exactly one of email or phone",
+      });
+      return;
+    }
+
+    if (email && !isValidEmail(email)) {
+      res.status(400).json({
+        success: false,
+        message: "Invalid email format",
+      });
+      return;
+    }
+
+    if (phone && !isValidPhone(phone)) {
+      res.status(400).json({
+        success: false,
+        message: "Invalid phone format",
+      });
+      return;
+    }
+
+    if (!isValidCode(code, 6)) {
+      res.status(400).json({
+        success: false,
+        message: "Invalid reset code format. Code must be 6 digits.",
+      });
+      return;
+    }
+
+    if (!isValidPassword(password)) {
+      res.status(400).json({
+        success: false,
+        message: "Password must be at least 8 characters",
+      });
+      return;
+    }
+
+    const identifier = phone || email!;
+    const ipAddress = (req.ip || req.socket.remoteAddress || "unknown").replace(
+      "::ffff:",
+      "",
+    );
+    const attemptCheck = await trackVerificationAttempt(identifier, ipAddress);
+
+    if (!attemptCheck.allowed) {
+      res.status(429).json({
+        success: false,
+        message: "Too many reset attempts. Please try again later.",
+      });
+      return;
+    }
+
+    try {
+      const user = await prisma.user.findUnique({
+        where: phone ? { phone } : { email },
+        select: {
+          id: true,
+          isActive: true,
+        },
+      });
+
+      if (!user || !user.isActive) {
+        res.status(400).json({
+          success: false,
+          message: "Invalid or incorrect reset code.",
+        });
+        return;
+      }
+
+      const resetCheck = await validateAndConsumeResetCode(identifier, code);
+      if (resetCheck.valid === false) {
+        res.status(400).json({
+          success: false,
+          message: resetCheck.message,
+        });
+        return;
+      }
+
+      const hashedPassword = await hashPassword(password);
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { password: hashedPassword },
+      });
+
+      await resetVerificationAttempts(identifier, ipAddress);
+
+      res.status(200).json({
+        success: true,
+        message: "Password reset successfully",
+      });
+    } catch (error: any) {
+      console.error("Password reset error:", {
+        message: error.message,
+        code: error.code,
+        stack: error.stack,
+      });
+      res.status(500).json({
+        success: false,
+        message: "Failed to reset password. Please try again.",
+      });
+    }
+  },
+);
+
+export const sendPhoneVerificationCode = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { phone, type, channel = "both" }: SendCodeRequestBody = req.body;
 
     const codeType = type || "ACTIVATION";
     const prismaCodeType = CodeType[codeType as keyof typeof CodeType];
@@ -214,30 +500,43 @@ export const sendVerificationCode = asyncHandler(
       return;
     }
 
-    const identifiers = [phone, email].filter(Boolean);
-    if (identifiers.length !== 1) {
+    if (prismaCodeType === CodeType.RESET) {
       res.status(400).json({
         success: false,
-        message: "Provide exactly one of phone or email",
+        message: "Use the password reset endpoints to request reset codes",
       });
       return;
     }
 
-    const identifier = phone || email!;
+    if (!phone) {
+      res.status(400).json({
+        success: false,
+        message: "Phone number is required",
+      });
+      return;
+    }
 
-    if (codeType === "LOGIN" || codeType === "RESET") {
+    if (!isValidPhone(phone)) {
+      res.status(400).json({
+        success: false,
+        message: "Invalid phone format",
+      });
+      return;
+    }
+
+    const identifier = phone;
+
+    if (codeType === "LOGIN") {
       try {
         const user = await prisma.user.findUnique({
-          where: phone ? { phone } : { email },
+          where: { phone },
         });
 
         if (!user) {
           res.status(404).json({
             success: false,
             message:
-              "We couldn't find an account with this " +
-              (phone ? "phone number" : "email") +
-              ". Would you like to create one?",
+              "We couldn't find an account with this phone number. Would you like to create one?",
           });
           return;
         }
@@ -249,22 +548,6 @@ export const sendVerificationCode = asyncHandler(
         });
         return;
       }
-    }
-
-    if (phone && !isValidPhone(phone)) {
-      res.status(400).json({
-        success: false,
-        message: "Invalid phone format",
-      });
-      return;
-    }
-
-    if (email && !isValidEmail(email)) {
-      res.status(400).json({
-        success: false,
-        message: "Invalid email format",
-      });
-      return;
     }
 
     let codeRecord;
@@ -285,20 +568,7 @@ export const sendVerificationCode = asyncHandler(
     }
 
     try {
-      if (phone) {
-        await dispatchOtp(phone, codeRecord.code, channel as OtpChannel);
-      } else if (email) {
-        const templateName =
-          prismaCodeType === CodeType.RESET
-            ? "App_Password_Reset"
-            : "App_Email_Verification";
-
-        await sendTemplateEmail(email, templateName, {
-          userName: "",
-          verificationCode: codeRecord.code,
-          appName: "Suite",
-        });
-      }
+      await dispatchOtp(phone, codeRecord.code, channel as OtpChannel);
     } catch (error: any) {
       console.error("Verification code delivery error:", {
         message: error.message,
@@ -318,9 +588,9 @@ export const sendVerificationCode = asyncHandler(
   },
 );
 
-export const verifyCode = asyncHandler(
+export const verifyPhoneCode = asyncHandler(
   async (req: AuthRequest, res: Response) => {
-    const { phone, email, code, type }: VerifyCodeRequestBody = req.body;
+    const { phone, code, type }: VerifyPhoneCodeRequestBody = req.body;
 
     const codeType = type || "ACTIVATION";
     const prismaCodeType = CodeType[codeType as keyof typeof CodeType];
@@ -333,18 +603,24 @@ export const verifyCode = asyncHandler(
       return;
     }
 
-    const identifiers = [phone, email].filter(Boolean);
-    if (identifiers.length !== 1) {
+    if (prismaCodeType === CodeType.RESET) {
       res.status(400).json({
         success: false,
-        message: "Provide exactly one of phone or email",
+        message:
+          "Password reset codes must be verified in the password reset flow",
       });
       return;
     }
 
-    const identifier = phone || email!;
+    if (!phone) {
+      res.status(400).json({
+        success: false,
+        message: "Phone number is required",
+      });
+      return;
+    }
 
-    if (phone && !isValidPhone(phone)) {
+    if (!isValidPhone(phone)) {
       res.status(400).json({
         success: false,
         message: "Invalid phone format",
@@ -352,13 +628,7 @@ export const verifyCode = asyncHandler(
       return;
     }
 
-    if (email && !isValidEmail(email)) {
-      res.status(400).json({
-        success: false,
-        message: "Invalid email format",
-      });
-      return;
-    }
+    const identifier = phone;
 
     if (!isValidCode(code, 6)) {
       res.status(400).json({
@@ -416,7 +686,7 @@ export const verifyCode = asyncHandler(
     if (!user) {
       res.status(404).json({
         success: false,
-        message: `User not found with this ${phone ? "phone number" : "email"}`,
+        message: "User not found with this phone number",
       });
       return;
     }
@@ -428,36 +698,37 @@ export const verifyCode = asyncHandler(
       });
       return;
     }
-      let verificationCheck;
-      try {
-        verificationCheck = await consumeVerificationCode(
-          identifier,
-          code,
-          prismaCodeType,
-        );
-      } catch (error: any) {
-        console.error("Database error consuming verification code:", {
-          message: error.message,
-          code: error.code,
-          stack: error.stack,
-        });
-        res.status(500).json({
-          success: false,
-          message: "An internal server error occurred. Please try again.",
-        });
-        return;
-      }
 
-      if (!verificationCheck.valid) {
-        const message =
-          verificationCheck.reason === "expired"
-            ? "Verification code has expired. Please request a new one."
-            : "Invalid or incorrect verification code";
-        res.status(400).json({ success: false, message });
-        return;
-      }
-    
-    const authenticatedUserId = req.userId ? BigInt(req.userId) : null;
+  
+    let verificationCheck;
+    try {
+      verificationCheck = await consumeVerificationCode(
+        identifier,
+        code,
+        prismaCodeType,
+      );
+    } catch (error: any) {
+      console.error("Database error consuming verification code:", {
+        message: error.message,
+        code: error.code,
+        stack: error.stack,
+      });
+      res.status(500).json({
+        success: false,
+        message: "An internal server error occurred. Please try again.",
+      });
+      return;
+    }
+
+    if (!verificationCheck.valid) {
+      const message =
+        verificationCheck.reason === "expired"
+          ? "Verification code has expired. Please request a new one."
+          : "Invalid or incorrect verification code";
+      res.status(400).json({ success: false, message });
+      return;
+    }
+  const authenticatedUserId = req.userId ? BigInt(req.userId) : null;
     const isSocialMerge =
       authenticatedUserId &&
       authenticatedUserId !== user.id &&
@@ -576,9 +847,7 @@ export const verifyCode = asyncHandler(
 
       await prisma.user.update({
         where: { id: user.id },
-        data: phone
-          ? { phoneVerifiedAt: new Date() }
-          : { emailVerifiedAt: new Date() },
+        data: { phoneVerifiedAt: new Date() },
       });
     } catch (error: any) {
       if (error.message === "LINKING_BLOCKED") {
@@ -609,14 +878,12 @@ export const verifyCode = asyncHandler(
     const userResponse = {
       ...user,
       id: user.id.toString(),
-      ...(phone
-        ? { phoneVerifiedAt: new Date() }
-        : { emailVerifiedAt: new Date() }),
+      phoneVerifiedAt: new Date(),
     };
 
     res.status(201).json({
       success: true,
-      message: `${phone ? "Phone number" : "Email"} verified successfully`,
+      message: "Phone number verified successfully",
       data: {
         user: userResponse,
         tokens: {
@@ -849,6 +1116,8 @@ export const updateProfile = asyncHandler(
           lastName: lastName || undefined,
           phone: skipPhone ? undefined : phone || undefined,
           email: email || undefined,
+          phoneVerifiedAt: phone && !skipPhone ? null : undefined,
+          emailVerifiedAt: email ? null : undefined,
           gender: (gender as Gender) || undefined,
           dob: dobDate || undefined,
         },
@@ -889,9 +1158,36 @@ export const updateProfile = asyncHandler(
 
 export const sendEmailCode = asyncHandler(
   async (req: AuthRequest, res: Response) => {
+    const userId = req.userId;
+    if (!userId) {
+      res.status(401).json({ success: false, message: "Unauthorized" });
+      return;
+    }
+
     const { email } = req.body;
 
+    if (!email || !isValidEmail(email)) {
+      res.status(400).json({
+        success: false,
+        message: "Invalid email format",
+      });
+      return;
+    }
+
     try {
+      const availability = await checkUserAvailability({
+        email,
+        excludeUserId: BigInt(userId),
+      });
+
+      if (!availability.available) {
+        res.status(409).json({
+          success: false,
+          message: availability.message,
+        });
+        return;
+      }
+
       await sendEmailVerificationCode(email, { codeLength: 6 });
 
       res.status(200).json({
@@ -1142,6 +1438,27 @@ export const verifyEmailCode = asyncHandler(
     }
 
     const { email, code } = req.body;
+
+    if (!email || !isValidEmail(email)) {
+      res.status(400).json({
+        success: false,
+        message: "Invalid email format",
+      });
+      return;
+    }
+
+    const availability = await checkUserAvailability({
+      email,
+      excludeUserId: BigInt(userId),
+    });
+
+    if (!availability.available) {
+      res.status(409).json({
+        success: false,
+        message: availability.message,
+      });
+      return;
+    }
 
     const result = await validateVerificationCode(email, code, 6);
 

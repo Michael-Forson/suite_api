@@ -92,10 +92,10 @@ Success:
 }
 ```
 
-### Send Verification Code
+### Send Phone Verification Code
 
 ```http
-POST /user/api/v1/auth/send-code
+POST /user/api/v1/auth/send-phone-code
 Content-Type: application/json
 ```
 
@@ -109,21 +109,13 @@ Body:
 }
 ```
 
-Alternative email body:
-
-```json
-{
-  "email": "ama@example.com",
-  "type": "LOGIN"
-}
-```
-
 Notes:
 
-- Provide exactly one of `phone` or `email`.
-- `type` can be `ACTIVATION`, `RESET`, or `LOGIN`.
+- `phone` is required.
+- `type` can be `ACTIVATION` or `LOGIN`.
 - `channel` can be `sms`, `whatsapp`, or `both`.
-- `LOGIN` and `RESET` require an existing user.
+- `LOGIN` requires an existing user.
+- Password reset codes use `/password-reset/request`.
 
 Success:
 
@@ -137,7 +129,7 @@ Success:
 ### Verify Phone Code
 
 ```http
-POST /user/api/v1/auth/verify-code
+POST /user/api/v1/auth/verify-phone-code
 Content-Type: application/json
 ```
 

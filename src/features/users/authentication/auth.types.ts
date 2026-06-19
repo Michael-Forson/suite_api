@@ -10,27 +10,40 @@ export interface RegisterRequestBody {
   dob?: string;
 }
 
-export interface VerifyCodeRequestBody {
-  phone?: string;
-  email?: string;
+export interface VerifyPhoneCodeRequestBody {
+  phone: string;
   code: string;
-  type?: "ACTIVATION" | "RESET" | "LOGIN";
+  type?: "ACTIVATION" | "LOGIN";
 }
 
 export interface SendEmailCodeRequestBody {}
 
 export interface VerifyEmailCodeRequestBody {
+  email: string;
   code: string;
 }
 
 export interface LoginRequestBody {
-  phone: string;
+  phone?: string;
+  email?: string;
+  password: string;
+}
+
+export interface RequestPasswordResetBody {
+  phone?: string;
+  email?: string;
+}
+
+export interface ResetPasswordBody {
+  phone?: string;
+  email?: string;
+  code: string;
+  password: string;
 }
 
 export interface SendCodeRequestBody {
-  phone?: string;
-  email?: string;
-  type?: "ACTIVATION" | "RESET" | "LOGIN";
+  phone: string;
+  type?: "ACTIVATION" | "LOGIN";
   channel?: "sms" | "whatsapp" | "both";
 }
 

@@ -1,8 +1,11 @@
 import { Router } from "express";
 import {
   registerUser,
-  sendVerificationCode,
-  verifyCode,
+  loginUser,
+  requestPasswordReset,
+  resetPassword,
+  sendPhoneVerificationCode,
+  verifyPhoneCode,
   sendEmailCode,
   verifyEmailCode,
   refreshToken,
@@ -26,15 +29,33 @@ const router = Router();
 
 // Apply multiple rate limiters: IP-based + identifier-based for SMS
 router.post("/register", registerLimiter, registerUser);
+router.post("/login", loginLimiter, loginUser);
 router.post(
-  "/send-code",
+  "/password-reset/request",
   smsLimiter,
   smsPerIdentifierLimiter,
-  sendVerificationCode
+  requestPasswordReset,
 );
-router.post("/verify-code", verifyCodeLimiter, optionalAuthenticate, verifyCode);
+router.post("/password-reset/confirm", verifyCodeLimiter, resetPassword);
+router.post(
+  "/send-phone-code",
+  smsLimiter,
+  smsPerIdentifierLimiter,
+  sendPhoneVerificationCode,
+);
+router.post(
+  "/verify-phone-code",
+  verifyCodeLimiter,
+  optionalAuthenticate,
+  verifyPhoneCode,
+);
 
-router.post("/send-verification-email", authenticate, emailLimiter, sendEmailCode);
+router.post(
+  "/send-verification-email",
+  authenticate,
+  emailLimiter,
+  sendEmailCode,
+);
 router.post("/verify-email", authenticate, verifyCodeLimiter, verifyEmailCode);
 
 router.post("/refresh-token", loginLimiter, refreshToken);
@@ -42,6 +63,6 @@ router.post("/continue-with-google", loginLimiter, continueWithGoogle);
 router.post("/continue-with-apple", loginLimiter, continueWithApple);
 router.get("/me", authenticate, getMe);
 router.patch("/profile", authenticate, updateProfile);
-router.delete("/account", authenticate, deleteAccount);
+router.delete("/delete-account", authenticate, deleteAccount);
 
 export default router;
