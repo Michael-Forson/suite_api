@@ -402,6 +402,282 @@ Success:
 }
 ```
 
+## Organization Endpoints
+
+Mounted at `/user/api/v1/organizations`.
+
+All organization routes require:
+
+```http
+Authorization: Bearer <accessToken>
+```
+
+### Create Organization
+
+```http
+POST /user/api/v1/organizations
+Content-Type: application/json
+```
+
+Body:
+
+```json
+{
+  "name": "Ama Foods",
+  "slug": "ama-foods",
+  "businessType": "Limited Liability Company",
+  "industry": "Food Services",
+  "email": "hello@amafoods.example",
+  "phone": "233241234567",
+  "country": "Ghana",
+  "city": "Accra",
+  "address": "12 Market Street"
+}
+```
+
+Notes:
+
+- `name` is required.
+- `slug` is optional and generated from `name` when omitted.
+- The provided `slug` or generated slug must contain letters or numbers.
+- The creator is added as an active `OWNER` member.
+
+### Update Organization Profile
+
+```http
+PATCH /user/api/v1/organizations/:id/profile
+Content-Type: application/json
+```
+
+Body:
+
+```json
+{
+  "name": "Ama Foods Ltd",
+  "industry": "Retail",
+  "email": "support@amafoods.example",
+  "phone": "233241234567",
+  "city": "Kumasi"
+}
+```
+
+Notes:
+
+- Organization owners and admins can update profile fields.
+- Optional profile fields can be set to `null`.
+- `slug`, `email`, and `phone` are validated when provided.
+
+### Change Organization Status
+
+```http
+PATCH /user/api/v1/organizations/:id/status
+Content-Type: application/json
+```
+
+Body:
+
+```json
+{
+  "status": "ACTIVE"
+}
+```
+
+Notes:
+
+- Only the organization owner can change status.
+- `status` must be `ACTIVE`, `INACTIVE`, `SUSPENDED`, or `DISABLED`.
+
+### Get Organization Details
+
+```http
+GET /user/api/v1/organizations/:id
+```
+
+Returns the organization, the current user's membership, and counts for members,
+apps, and roles. The user must belong to the organization.
+
+### List User Organizations
+
+```http
+GET /user/api/v1/organizations
+```
+
+Returns organizations the authenticated user owns or belongs to as an active
+member.
+
+## Organization Member Endpoints
+
+Mounted at `/user/api/v1/organizations`.
+
+All member management routes require:
+
+```http
+Authorization: Bearer <accessToken>
+```
+
+### List Organization Members
+
+```http
+GET /user/api/v1/organizations/:organizationId/members
+```
+
+Returns organization members with basic user profile fields. Owners and admins
+can list members.
+
+### Update Member Job Title
+
+```http
+PATCH /user/api/v1/organizations/:organizationId/members/:memberId/job-title
+Content-Type: application/json
+```
+
+Body:
+
+```json
+{
+  "jobTitle": "Operations Manager"
+}
+```
+
+### Change Member Role
+
+```http
+PATCH /user/api/v1/organizations/:organizationId/members/:memberId/role
+Content-Type: application/json
+```
+
+Body:
+
+```json
+{
+  "organizationRole": "ADMIN"
+}
+```
+
+Notes:
+
+- Role must be `ADMIN` or `MEMBER`.
+- The owner cannot be demoted through this endpoint.
+- Admins can only manage regular members.
+
+### Change Member Status
+
+```http
+PATCH /user/api/v1/organizations/:organizationId/members/:memberId/status
+Content-Type: application/json
+```
+
+Body:
+
+```json
+{
+  "status": "SUSPENDED"
+}
+```
+
+Notes:
+
+- Status must be `ACTIVE`, `INACTIVE`, or `SUSPENDED`.
+- The owner cannot be disabled or suspended through this endpoint.
+
+### Remove Member
+
+```http
+DELETE /user/api/v1/organizations/:organizationId/members/:memberId
+```
+
+Deletes the member record. The owner cannot be removed, and admins cannot remove
+owners or other admins.
+
+## Organization Invitation Endpoints
+
+Mounted at `/user/api/v1/organizations`.
+
+### Create Staff Invitation
+
+```http
+POST /user/api/v1/organizations/:organizationId/invitations
+Authorization: Bearer <accessToken>
+Content-Type: application/json
+```
+
+Body:
+
+```json
+{
+  "email": "staff@example.com",
+  "organizationRole": "MEMBER"
+}
+```
+
+Notes:
+
+- Owners can invite `ADMIN` or `MEMBER` staff.
+- Admins can invite `MEMBER` staff only.
+- Creates a 7-day pending invitation and returns the token/link.
+
+### Send Invitation Email
+
+```http
+POST /user/api/v1/organizations/:organizationId/invitations/:invitationId/send-email
+Authorization: Bearer <accessToken>
+```
+
+Sends the `App_Organization_Invitation` email using `INVITATION_ACCEPT_URL`.
+
+### Validate Invitation Token
+
+```http
+GET /user/api/v1/organizations/:organizationId/invitations/validate/:token
+```
+
+Returns safe invitation details when the token is pending and unexpired.
+
+### Accept Invitation
+
+```http
+POST /user/api/v1/organizations/:organizationId/invitations/accept
+Authorization: Bearer <accessToken>
+Content-Type: application/json
+```
+
+Body:
+
+```json
+{
+  "token": "64-character-random-token"
+}
+```
+
+The authenticated user's email must match the invitation email.
+
+### Expire Old Invitations
+
+```http
+PATCH /user/api/v1/organizations/:organizationId/invitations/expire-old
+Authorization: Bearer <accessToken>
+```
+
+Marks pending expired invitations as `EXPIRED`.
+
+### Revoke Invitation
+
+```http
+PATCH /user/api/v1/organizations/:organizationId/invitations/:invitationId/revoke
+Authorization: Bearer <accessToken>
+```
+
+Marks a pending invitation as `REVOKED`.
+
+### Resend Invitation
+
+```http
+POST /user/api/v1/organizations/:organizationId/invitations/:invitationId/resend
+Authorization: Bearer <accessToken>
+```
+
+Refreshes the token and expiry, then sends the invitation email again.
+
 ## Payment Endpoints
 
 Mounted at `/user/api/v1/payments`.

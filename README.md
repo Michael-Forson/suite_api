@@ -48,6 +48,7 @@ Create a local `.env` file in `starter_api/`. Do not commit real secrets.
 | Name | Required | Purpose |
 | --- | --- | --- |
 | `DATABASE_URL` | Yes | PostgreSQL connection string used by Prisma and the Prisma adapter. |
+| `TESTDB_URL` | Yes for tests | Dedicated PostgreSQL test database URL. The Jest suite refuses databases whose name does not include `test`. |
 | `PORT` | No | HTTP port. Defaults to `3000`. |
 | `NODE_ENV` | No | Enables development Prisma logging when set to `development`. |
 | `JWT_SECRET` | Yes | Signs user access tokens. |
@@ -68,6 +69,7 @@ Create a local `.env` file in `starter_api/`. Do not commit real secrets.
 | `MAIL_USERNAME` | Yes for email | SMTP username. |
 | `MAIL_PASSWORD` | Yes for email | SMTP password. |
 | `MAIL_FROM_ADDRESS` | Yes for email | Email sender address. |
+| `INVITATION_ACCEPT_URL` | Yes for invitation email | Frontend invitation acceptance URL. The API appends `token`, or replaces `{{token}}` if present. |
 | `MINIO_ENDPOINT` | Yes for S3 helpers | S3/MinIO endpoint host. |
 | `MINIO_ACCESS_KEY` | Yes for S3 helpers | S3/MinIO access key. |
 | `MINIO_SECRET_KEY` | Yes for S3 helpers | S3/MinIO secret key. |
@@ -92,6 +94,7 @@ Common local commands:
 ```bash
 npx prisma generate
 npx prisma db push
+npm run test:db:push
 npm run seed
 ```
 
@@ -107,6 +110,7 @@ is aligned with the source code.
 | `npm run build` | Compiles TypeScript with `tsc` into `dist/`. |
 | `npm run start` | Runs the compiled server from `dist/index.js`. |
 | `npm run test` | Runs Jest with ESM VM module support. |
+| `npm run test:db:push` | Pushes the Prisma schema to `TESTDB_URL` after verifying the database name includes `test`. |
 | `npm run seed` | Runs `tsx prisma/seed.ts`. |
 | `npm run seed:app-versions` | Runs the app-version seed runner when the referenced seed files exist. |
 | `npm run seed:admin` | Runs the admin seed runner when the referenced seed files exist. |
@@ -143,6 +147,7 @@ or utils, and mount the router in `src/createApp.ts`.
 The app mounts these route groups:
 
 - `/user/api/v1/auth`
+- `/user/api/v1/organizations`
 - `/user/api/v1/payments`
 - `/user/api/v1/notifications`
 - `/user/api/v1/config`
