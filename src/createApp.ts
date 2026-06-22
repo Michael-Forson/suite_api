@@ -2,9 +2,12 @@ import express from "express";
 import dotenv from "dotenv";
 import cors from "cors";
 import helmet from "helmet";
-import authRoutes from "./features/users/authentication/auth.routes.js";
-import paymentRoutes from "./features/users/payments/payment.routes.js";
-import notificationRoutes from "./features/users/notification/notification.router.js";
+import authRoutes from "./features/core/authentication/auth.routes.js";
+import organizationInvitationRoutes from "./features/core/organization-invitation/org_inv.routes.js";
+import organizationMemberRoutes from "./features/core/organization-member/org_mem.routes.js";
+import organizationRoutes from "./features/core/organization/org.routes.js";
+import paymentRoutes from "./features/config/payments/payment.routes.js";
+import notificationRoutes from "./features/config/notification/notification.router.js";
 import configRoutes from "./features/config/config.routes.js";
 import { generalLimiter } from "./middleware/common/rateLimiter.middleware.js";
 
@@ -38,6 +41,9 @@ export function createApp() {
 
   app.use("/user/api/v1/config", configRoutes);
   app.use("/user/api/v1/auth", authRoutes);
+  app.use("/user/api/v1/organizations", organizationInvitationRoutes);
+  app.use("/user/api/v1/organizations", organizationMemberRoutes);
+  app.use("/user/api/v1/organizations", organizationRoutes);
   app.use("/user/api/v1/payments", paymentRoutes);
   app.use("/user/api/v1/notifications", notificationRoutes);
 

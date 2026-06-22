@@ -23,6 +23,14 @@ export const emailTemplatesArray: EmailTemplate[] = [
       '<html><body><h2>Reset Your Password</h2><p>Hi {{userName}},</p><p>Your password reset code is:</p><h1 style="letter-spacing: 8px; font-size: 32px;">{{verificationCode}}</h1><p>This code expires in 15 minutes.</p><p>If you didn\'t request a password reset, you can safely ignore this email.</p></body></html>',
   },
   {
+    TemplateName: "App_Organization_Invitation",
+    SubjectPart: "You have been invited to join {{organizationName}}",
+    TextPart:
+      "{{inviterName}} invited you to join {{organizationName}} as {{organizationRole}}. Accept the invitation here: {{invitationLink}}. This link expires in {{expiresInDays}} days.",
+    HtmlPart:
+      '<html><body><h2>You have been invited to join {{organizationName}}</h2><p>{{inviterName}} invited you to join as <strong>{{organizationRole}}</strong>.</p><p><a href="{{invitationLink}}">Accept invitation</a></p><p>This link expires in {{expiresInDays}} days.</p></body></html>',
+  },
+  {
     TemplateName: "App_ReEngagement_Checkin",
     SubjectPart: "We Miss You, {{userName}}! See What's New at {{appName}}",
     TextPart:

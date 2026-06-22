@@ -69,8 +69,10 @@ export async function verifyAndProcessPayment(
   });
 
   if (!transaction) return { status: "processing" };
-  if (transaction.status === TransactionStatus.SUCCESS) return { status: "success" };
-  if (transaction.status === TransactionStatus.FAILED) return { status: "failed" };
+  if (transaction.status === TransactionStatus.SUCCESS)
+    return { status: "success" };
+  if (transaction.status === TransactionStatus.FAILED)
+    return { status: "failed" };
 
   try {
     const paystackResponse = await paystackService.verifyTransaction(reference);
