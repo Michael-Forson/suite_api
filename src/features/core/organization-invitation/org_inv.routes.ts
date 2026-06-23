@@ -12,29 +12,26 @@ import {
 
 const router = Router();
 
-router.post("/:organizationId/invitations", authenticate, createStaffInvitation);
-router.get(
-  "/:organizationId/invitations/validate/:token",
-  validateInvitationToken,
-);
-router.post("/:organizationId/invitations/accept", authenticate, acceptInvitation);
+router.post("/:organizationId/invites", authenticate, createStaffInvitation);
+router.get("/:organizationId/invites/validate/:token", validateInvitationToken);
+router.post("/:organizationId/invites/accept", authenticate, acceptInvitation);
 router.patch(
-  "/:organizationId/invitations/expire-old",
+  "/:organizationId/invites/expire-old",
   authenticate,
   expireOldInvitations,
 );
 router.post(
-  "/:organizationId/invitations/:invitationId/send-email",
+  "/:organizationId/invites/:invitationId/send-email",
   authenticate,
   sendInvitationEmail,
 );
 router.patch(
-  "/:organizationId/invitations/:invitationId/revoke",
+  "/:organizationId/invites/:invitationId/revoke",
   authenticate,
   revokeInvitation,
 );
 router.post(
-  "/:organizationId/invitations/:invitationId/resend",
+  "/:organizationId/invites/:invitationId/resend",
   authenticate,
   resendInvitation,
 );

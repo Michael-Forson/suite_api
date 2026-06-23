@@ -1,37 +1,90 @@
 import { Response } from "express";
 import asyncHandler from "express-async-handler";
 import {
+  AccountStatus,
   MemberStatus,
   OrganizationRole,
 } from "../../../generated/prisma/enums.js";
 import { AuthRequest } from "../../../middleware/users/auth.middleware.js";
 import { prisma } from "../../../prisma.js";
 import {
-  authenticatedUserId,
   ensureUniqueSlug,
+  isActiveAccount,
+  isOptionalStringValue,
+  isUniqueConstraintError,
   isValidOrganizationStatus,
   normalizeOptionalString,
   ORGANIZATION_PROFILE_FIELDS,
-  organizationIdFromParams,
   ORGANIZATION_SELECT,
-  requireMembership,
-  requireOwner,
-  requireOwnerOrAdmin,
   serializeOrganization,
   slugify,
   validateContactFields,
   validOrganizationStatuses,
 } from "./org.helpers.js";
+import { OrganizationAccessRequest } from "./org.middleware.js";
 import {
   ChangeOrganizationStatusRequestBody,
   CreateOrganizationRequestBody,
   UpdateOrganizationProfileRequestBody,
 } from "./org.types.js";
 
+const CREATE_OPTIONAL_STRING_FIELDS = [
+  "slug",
+  ...ORGANIZATION_PROFILE_FIELDS,
+] as const;
+
+const MAX_CREATE_SLUG_ATTEMPTS = 3;
+
+const validateOptionalStringFields = (
+  body: Record<string, unknown>,
+  fields: readonly string[],
+  res: Response,
+) => {
+  for (const field of fields) {
+    if (field in body && !isOptionalStringValue(body[field])) {
+      res.status(400).json({
+        success: false,
+        message: `${field} must be a string or null`,
+      });
+      return false;
+    }
+  }
+
+  return true;
+};
+
 export const createOrganization = asyncHandler(
   async (req: AuthRequest, res: Response) => {
-    const userId = authenticatedUserId(req, res);
-    if (!userId) return;
+    if (!req.userId) {
+      res.status(401).json({
+        success: false,
+        message: "Authentication required.",
+      });
+      return;
+    }
+    const userId = BigInt(req.userId);
+
+    const body = req.body as CreateOrganizationRequestBody &
+      Record<string, unknown>;
+    if (!("name" in body) || body.name === undefined || body.name === null) {
+      res.status(400).json({
+        success: false,
+        message: "Organization name is required",
+      });
+      return;
+    }
+
+    if (typeof body.name !== "string") {
+      res.status(400).json({
+        success: false,
+        message: "Organization name must be a string",
+      });
+      return;
+    }
+
+    if (!validateOptionalStringFields(body, CREATE_OPTIONAL_STRING_FIELDS, res)) {
+      return;
+    }
 
     const {
       name,
@@ -44,10 +97,10 @@ export const createOrganization = asyncHandler(
       country,
       city,
       address,
-    }: CreateOrganizationRequestBody = req.body;
+    } = body;
 
     const normalizedName = normalizeOptionalString(name);
-    if (!normalizedName || typeof normalizedName !== "string") {
+    if (!normalizedName) {
       res.status(400).json({
         success: false,
         message: "Organization name is required",
@@ -65,10 +118,10 @@ export const createOrganization = asyncHandler(
 
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, isActive: true },
+      select: { id: true, isActive: true, status: true },
     });
 
-    if (!user || !user.isActive) {
+    if (!isActiveAccount(user)) {
       res.status(403).json({
         success: false,
         message: "Your account is not active.",
@@ -85,38 +138,58 @@ export const createOrganization = asyncHandler(
       return;
     }
 
-    const uniqueSlug = await ensureUniqueSlug(baseSlug);
+    let organization: Awaited<ReturnType<typeof prisma.organization.create>> | null =
+      null;
 
-    const organization = await prisma.$transaction(async (tx) => {
-      const created = await tx.organization.create({
-        data: {
-          name: normalizedName,
-          slug: uniqueSlug,
-          ownerId: userId,
-          businessType: normalizeOptionalString(businessType) as string | null,
-          industry: normalizeOptionalString(industry) as string | null,
-          email: normalizedEmail,
-          phone: normalizedPhone,
-          logoUrl: normalizeOptionalString(logoUrl) as string | null,
-          country: normalizeOptionalString(country) as string | null,
-          city: normalizeOptionalString(city) as string | null,
-          address: normalizeOptionalString(address) as string | null,
-        },
-        select: ORGANIZATION_SELECT,
+    for (let attempt = 0; attempt < MAX_CREATE_SLUG_ATTEMPTS; attempt += 1) {
+      const uniqueSlug = await ensureUniqueSlug(baseSlug);
+
+      try {
+        organization = await prisma.$transaction(async (tx) => {
+          const created = await tx.organization.create({
+            data: {
+              name: normalizedName,
+              slug: uniqueSlug,
+              ownerId: userId,
+              businessType: normalizeOptionalString(
+                businessType,
+              ) as string | null,
+              industry: normalizeOptionalString(industry) as string | null,
+              email: normalizedEmail,
+              phone: normalizedPhone,
+              logoUrl: normalizeOptionalString(logoUrl) as string | null,
+              country: normalizeOptionalString(country) as string | null,
+              city: normalizeOptionalString(city) as string | null,
+              address: normalizeOptionalString(address) as string | null,
+            },
+            select: ORGANIZATION_SELECT,
+          });
+
+          await tx.organizationMember.create({
+            data: {
+              organizationId: created.id,
+              userId,
+              organizationRole: OrganizationRole.OWNER,
+              status: MemberStatus.ACTIVE,
+              joinedAt: new Date(),
+            },
+          });
+
+          return created;
+        });
+        break;
+      } catch (error) {
+        if (!isUniqueConstraintError(error)) throw error;
+      }
+    }
+
+    if (!organization) {
+      res.status(409).json({
+        success: false,
+        message: "Organization slug is already in use",
       });
-
-      await tx.organizationMember.create({
-        data: {
-          organizationId: created.id,
-          userId,
-          organizationRole: OrganizationRole.OWNER,
-          status: MemberStatus.ACTIVE,
-          joinedAt: new Date(),
-        },
-      });
-
-      return created;
-    });
+      return;
+    }
 
     res.status(201).json({
       success: true,
@@ -127,26 +200,31 @@ export const createOrganization = asyncHandler(
 );
 
 export const updateOrganizationProfile = asyncHandler(
-  async (req: AuthRequest, res: Response) => {
-    const userId = authenticatedUserId(req, res);
-    if (!userId) return;
-
-    const organizationId = organizationIdFromParams(req.params.id);
+  async (req: OrganizationAccessRequest, res: Response) => {
+    const organizationId = req.organizationAccess?.organizationId;
     if (!organizationId) {
-      res
-        .status(400)
-        .json({ success: false, message: "Invalid organization id" });
+      res.status(500).json({
+        success: false,
+        message: "Organization access middleware is required.",
+      });
       return;
     }
 
-    if (!(await requireOwnerOrAdmin(organizationId, userId, res))) return;
-
-    const body: UpdateOrganizationProfileRequestBody = req.body;
+    const body = req.body as UpdateOrganizationProfileRequestBody &
+      Record<string, unknown>;
     const data: Record<string, string | null | undefined> = {};
 
     if ("name" in body) {
+      if (typeof body.name !== "string") {
+        res.status(400).json({
+          success: false,
+          message: "Organization name must be a string",
+        });
+        return;
+      }
+
       const name = normalizeOptionalString(body.name);
-      if (!name || typeof name !== "string") {
+      if (!name) {
         res.status(400).json({
           success: false,
           message: "Organization name cannot be empty",
@@ -157,8 +235,16 @@ export const updateOrganizationProfile = asyncHandler(
     }
 
     if ("slug" in body) {
+      if (typeof body.slug !== "string") {
+        res.status(400).json({
+          success: false,
+          message: "Organization slug must be a string",
+        });
+        return;
+      }
+
       const slug = normalizeOptionalString(body.slug);
-      if (!slug || typeof slug !== "string") {
+      if (!slug) {
         res.status(400).json({
           success: false,
           message: "Organization slug cannot be empty",
@@ -191,6 +277,10 @@ export const updateOrganizationProfile = asyncHandler(
       data.slug = normalizedSlug;
     }
 
+    if (!validateOptionalStringFields(body, ORGANIZATION_PROFILE_FIELDS, res)) {
+      return;
+    }
+
     for (const field of ORGANIZATION_PROFILE_FIELDS) {
       if (field in body) {
         data[field] = normalizeOptionalString(body[field]) as string | null;
@@ -214,11 +304,24 @@ export const updateOrganizationProfile = asyncHandler(
       return;
     }
 
-    const organization = await prisma.organization.update({
-      where: { id: organizationId },
-      data,
-      select: ORGANIZATION_SELECT,
-    });
+    let organization;
+    try {
+      organization = await prisma.organization.update({
+        where: { id: organizationId },
+        data,
+        select: ORGANIZATION_SELECT,
+      });
+    } catch (error) {
+      if (isUniqueConstraintError(error) && data.slug) {
+        res.status(409).json({
+          success: false,
+          message: "Organization slug is already in use",
+        });
+        return;
+      }
+
+      throw error;
+    }
 
     res.status(200).json({
       success: true,
@@ -229,19 +332,15 @@ export const updateOrganizationProfile = asyncHandler(
 );
 
 export const changeOrganizationStatus = asyncHandler(
-  async (req: AuthRequest, res: Response) => {
-    const userId = authenticatedUserId(req, res);
-    if (!userId) return;
-
-    const organizationId = organizationIdFromParams(req.params.id);
+  async (req: OrganizationAccessRequest, res: Response) => {
+    const organizationId = req.organizationAccess?.organizationId;
     if (!organizationId) {
-      res
-        .status(400)
-        .json({ success: false, message: "Invalid organization id" });
+      res.status(500).json({
+        success: false,
+        message: "Organization access middleware is required.",
+      });
       return;
     }
-
-    if (!(await requireOwner(organizationId, userId, res))) return;
 
     const { status }: ChangeOrganizationStatusRequestBody = req.body;
     if (!isValidOrganizationStatus(status)) {
@@ -267,26 +366,22 @@ export const changeOrganizationStatus = asyncHandler(
 );
 
 export const getOrganizationDetails = asyncHandler(
-  async (req: AuthRequest, res: Response) => {
-    const userId = authenticatedUserId(req, res);
-    if (!userId) return;
-
-    const organizationId = organizationIdFromParams(req.params.id);
-    if (!organizationId) {
-      res
-        .status(400)
-        .json({ success: false, message: "Invalid organization id" });
+  async (req: OrganizationAccessRequest, res: Response) => {
+    const access = req.organizationAccess;
+    if (!access) {
+      res.status(500).json({
+        success: false,
+        message: "Organization access middleware is required.",
+      });
       return;
     }
 
-    if (!(await requireMembership(organizationId, userId, res))) return;
-
     const organization = await prisma.organization.findUnique({
-      where: { id: organizationId },
+      where: { id: access.organizationId },
       select: {
         ...ORGANIZATION_SELECT,
         members: {
-          where: { userId },
+          where: { userId: access.userId },
           take: 1,
           orderBy: { createdAt: "asc" },
         },
@@ -317,14 +412,34 @@ export const getOrganizationDetails = asyncHandler(
 
 export const listUserOrganizations = asyncHandler(
   async (req: AuthRequest, res: Response) => {
-    const userId = authenticatedUserId(req, res);
-    if (!userId) return;
+    if (!req.userId) {
+      res.status(401).json({
+        success: false,
+        message: "Authentication required.",
+      });
+      return;
+    }
+    const userId = BigInt(req.userId);
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, isActive: true, status: true },
+    });
+
+    if (!isActiveAccount(user)) {
+      res.status(403).json({
+        success: false,
+        message: "Your account is not active.",
+      });
+      return;
+    }
 
     const organizations = await prisma.organization.findMany({
       where: {
         OR: [
           { ownerId: userId },
           {
+            status: AccountStatus.ACTIVE,
             members: {
               some: {
                 userId,

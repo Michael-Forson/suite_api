@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import { Response } from "express";
 import {
+  AccountStatus,
   InvitationStatus,
   OrganizationRole,
 } from "../../../generated/prisma/enums.js";
@@ -25,6 +26,7 @@ export const INVITATION_SELECT = {
       name: true,
       slug: true,
       ownerId: true,
+      status: true,
     },
   },
   inviter: {
@@ -69,6 +71,7 @@ export const serializeInvitation = <
       name: string;
       slug: string;
       ownerId: bigint;
+      status: AccountStatus;
     };
     inviter?: {
       id: bigint;

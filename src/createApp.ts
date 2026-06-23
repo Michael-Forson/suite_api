@@ -3,6 +3,9 @@ import dotenv from "dotenv";
 import cors from "cors";
 import helmet from "helmet";
 import authRoutes from "./features/core/authentication/auth.routes.js";
+import appRoutes, {
+  organizationAppsRouter,
+} from "./features/core/app/app.routes.js";
 import organizationInvitationRoutes from "./features/core/organization-invitation/org_inv.routes.js";
 import organizationMemberRoutes from "./features/core/organization-member/org_mem.routes.js";
 import organizationRoutes from "./features/core/organization/org.routes.js";
@@ -41,8 +44,10 @@ export function createApp() {
 
   app.use("/user/api/v1/config", configRoutes);
   app.use("/user/api/v1/auth", authRoutes);
+  app.use("/user/api/v1/apps", appRoutes);
   app.use("/user/api/v1/organizations", organizationInvitationRoutes);
   app.use("/user/api/v1/organizations", organizationMemberRoutes);
+  app.use("/user/api/v1/organizations", organizationAppsRouter);
   app.use("/user/api/v1/organizations", organizationRoutes);
   app.use("/user/api/v1/payments", paymentRoutes);
   app.use("/user/api/v1/notifications", notificationRoutes);

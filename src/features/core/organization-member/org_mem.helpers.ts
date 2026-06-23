@@ -1,9 +1,11 @@
 import { Response } from "express";
 import {
+  AccountStatus,
   MemberStatus,
   OrganizationRole,
 } from "../../../generated/prisma/enums.js";
 import { prisma } from "../../../prisma.js";
+import { isActiveAccount } from "../organization/org.helpers.js";
 
 export const MEMBER_SELECT = {
   id: true,
@@ -97,15 +99,36 @@ export const requireMemberManager = async (
   userId: bigint,
   res: Response,
 ): Promise<MemberManager | null> => {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, isActive: true, status: true },
+  });
+
+  if (!isActiveAccount(user)) {
+    res.status(403).json({
+      success: false,
+      message: "Your account is not active.",
+    });
+    return null;
+  }
+
   const organization = await prisma.organization.findUnique({
     where: { id: organizationId },
-    select: { id: true, ownerId: true },
+    select: { id: true, ownerId: true, status: true },
   });
 
   if (!organization) {
     res.status(404).json({
       success: false,
       message: "Organization not found",
+    });
+    return null;
+  }
+
+  if (organization.status !== AccountStatus.ACTIVE) {
+    res.status(403).json({
+      success: false,
+      message: "This organization is not active.",
     });
     return null;
   }

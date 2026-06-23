@@ -39,7 +39,7 @@ describe("organization invitation endpoints", () => {
     });
 
     const ownerInviteResponse = await request(app)
-      .post(`/user/api/v1/organizations/${organization.id}/invitations`)
+      .post(`/user/api/v1/organizations/${organization.id}/invites`)
       .set("Authorization", authHeader(owner.id))
       .send({
         email: "new-admin@example.test",
@@ -51,7 +51,7 @@ describe("organization invitation endpoints", () => {
     expect(ownerInviteResponse.body.data.invitation.token).toHaveLength(64);
 
     const adminInviteResponse = await request(app)
-      .post(`/user/api/v1/organizations/${organization.id}/invitations`)
+      .post(`/user/api/v1/organizations/${organization.id}/invites`)
       .set("Authorization", authHeader(admin.id))
       .send({
         email: "admin-invites-member@example.test",
@@ -61,7 +61,7 @@ describe("organization invitation endpoints", () => {
     expect(adminInviteResponse.status).toBe(201);
 
     const adminInviteAdminResponse = await request(app)
-      .post(`/user/api/v1/organizations/${organization.id}/invitations`)
+      .post(`/user/api/v1/organizations/${organization.id}/invites`)
       .set("Authorization", authHeader(admin.id))
       .send({
         email: "admin-invites-admin@example.test",
@@ -75,14 +75,14 @@ describe("organization invitation endpoints", () => {
     const { organization, owner } = await createTestOrganization();
 
     const invalidEmailResponse = await request(app)
-      .post(`/user/api/v1/organizations/${organization.id}/invitations`)
+      .post(`/user/api/v1/organizations/${organization.id}/invites`)
       .set("Authorization", authHeader(owner.id))
       .send({ email: "not-an-email", organizationRole: "MEMBER" });
 
     expect(invalidEmailResponse.status).toBe(400);
 
     const invalidRoleResponse = await request(app)
-      .post(`/user/api/v1/organizations/${organization.id}/invitations`)
+      .post(`/user/api/v1/organizations/${organization.id}/invites`)
       .set("Authorization", authHeader(owner.id))
       .send({ email: "valid@example.test", organizationRole: "OWNER" });
 
@@ -95,7 +95,7 @@ describe("organization invitation endpoints", () => {
     });
 
     const duplicateResponse = await request(app)
-      .post(`/user/api/v1/organizations/${organization.id}/invitations`)
+      .post(`/user/api/v1/organizations/${organization.id}/invites`)
       .set("Authorization", authHeader(owner.id))
       .send({ email: "duplicate@example.test", organizationRole: "MEMBER" });
 
@@ -107,7 +107,7 @@ describe("organization invitation endpoints", () => {
     const { user } = await createTestMember({ organizationId: organization.id });
 
     const response = await request(app)
-      .post(`/user/api/v1/organizations/${organization.id}/invitations`)
+      .post(`/user/api/v1/organizations/${organization.id}/invites`)
       .set("Authorization", authHeader(owner.id))
       .send({ email: user.email, organizationRole: "MEMBER" });
 
@@ -124,7 +124,7 @@ describe("organization invitation endpoints", () => {
 
     const response = await request(app)
       .post(
-        `/user/api/v1/organizations/${organization.id}/invitations/${invitation.id}/send-email`,
+        `/user/api/v1/organizations/${organization.id}/invites/${invitation.id}/send-email`,
       )
       .set("Authorization", authHeader(owner.id));
 
@@ -150,17 +150,17 @@ describe("organization invitation endpoints", () => {
     });
 
     const validResponse = await request(app).get(
-      `/user/api/v1/organizations/${organization.id}/invitations/validate/${validInvitation.token}`,
+      `/user/api/v1/organizations/${organization.id}/invites/validate/${validInvitation.token}`,
     );
     expect(validResponse.status).toBe(200);
 
     const invalidResponse = await request(app).get(
-      `/user/api/v1/organizations/${organization.id}/invitations/validate/not-real`,
+      `/user/api/v1/organizations/${organization.id}/invites/validate/not-real`,
     );
     expect(invalidResponse.status).toBe(404);
 
     const wrongOrgResponse = await request(app).get(
-      `/user/api/v1/organizations/${other.organization.id}/invitations/validate/${validInvitation.token}`,
+      `/user/api/v1/organizations/${other.organization.id}/invites/validate/${validInvitation.token}`,
     );
     expect(wrongOrgResponse.status).toBe(404);
 
@@ -170,7 +170,7 @@ describe("organization invitation endpoints", () => {
       expiresAt: new Date(Date.now() - 1000),
     });
     const expiredResponse = await request(app).get(
-      `/user/api/v1/organizations/${organization.id}/invitations/validate/${expiredInvitation.token}`,
+      `/user/api/v1/organizations/${organization.id}/invites/validate/${expiredInvitation.token}`,
     );
     expect(expiredResponse.status).toBe(400);
 
@@ -180,7 +180,7 @@ describe("organization invitation endpoints", () => {
       status: InvitationStatus.ACCEPTED,
     });
     const acceptedResponse = await request(app).get(
-      `/user/api/v1/organizations/${organization.id}/invitations/validate/${acceptedInvitation.token}`,
+      `/user/api/v1/organizations/${organization.id}/invites/validate/${acceptedInvitation.token}`,
     );
     expect(acceptedResponse.status).toBe(400);
 
@@ -190,7 +190,7 @@ describe("organization invitation endpoints", () => {
       status: InvitationStatus.REVOKED,
     });
     const revokedResponse = await request(app).get(
-      `/user/api/v1/organizations/${organization.id}/invitations/validate/${revokedInvitation.token}`,
+      `/user/api/v1/organizations/${organization.id}/invites/validate/${revokedInvitation.token}`,
     );
     expect(revokedResponse.status).toBe(400);
   });
@@ -206,14 +206,14 @@ describe("organization invitation endpoints", () => {
     });
 
     const wrongEmailResponse = await request(app)
-      .post(`/user/api/v1/organizations/${organization.id}/invitations/accept`)
+      .post(`/user/api/v1/organizations/${organization.id}/invites/accept`)
       .set("Authorization", authHeader(wrongUser.id))
       .send({ token: invitation.token });
 
     expect(wrongEmailResponse.status).toBe(403);
 
     const acceptResponse = await request(app)
-      .post(`/user/api/v1/organizations/${organization.id}/invitations/accept`)
+      .post(`/user/api/v1/organizations/${organization.id}/invites/accept`)
       .set("Authorization", authHeader(invitedUser.id))
       .send({ token: invitation.token });
 
@@ -227,7 +227,7 @@ describe("organization invitation endpoints", () => {
     expect(savedInvitation?.status).toBe(InvitationStatus.ACCEPTED);
 
     const reuseResponse = await request(app)
-      .post(`/user/api/v1/organizations/${organization.id}/invitations/accept`)
+      .post(`/user/api/v1/organizations/${organization.id}/invites/accept`)
       .set("Authorization", authHeader(invitedUser.id))
       .send({ token: invitation.token });
 
@@ -248,7 +248,7 @@ describe("organization invitation endpoints", () => {
 
     const revokeResponse = await request(app)
       .patch(
-        `/user/api/v1/organizations/${organization.id}/invitations/${pendingInvitation.id}/revoke`,
+        `/user/api/v1/organizations/${organization.id}/invites/${pendingInvitation.id}/revoke`,
       )
       .set("Authorization", authHeader(owner.id));
 
@@ -257,7 +257,7 @@ describe("organization invitation endpoints", () => {
 
     const acceptedRevokeResponse = await request(app)
       .patch(
-        `/user/api/v1/organizations/${organization.id}/invitations/${acceptedInvitation.id}/revoke`,
+        `/user/api/v1/organizations/${organization.id}/invites/${acceptedInvitation.id}/revoke`,
       )
       .set("Authorization", authHeader(owner.id));
 
@@ -274,7 +274,7 @@ describe("organization invitation endpoints", () => {
 
     const response = await request(app)
       .post(
-        `/user/api/v1/organizations/${organization.id}/invitations/${invitation.id}/resend`,
+        `/user/api/v1/organizations/${organization.id}/invites/${invitation.id}/resend`,
       )
       .set("Authorization", authHeader(owner.id));
 
@@ -303,7 +303,7 @@ describe("organization invitation endpoints", () => {
     });
 
     const response = await request(app)
-      .patch(`/user/api/v1/organizations/${organization.id}/invitations/expire-old`)
+      .patch(`/user/api/v1/organizations/${organization.id}/invites/expire-old`)
       .set("Authorization", authHeader(owner.id));
 
     expect(response.status).toBe(200);
