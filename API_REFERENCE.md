@@ -445,7 +445,7 @@ Notes:
 ### Update Organization Profile
 
 ```http
-PATCH /user/api/v1/organizations/:id/profile
+PATCH /user/api/v1/organizations/:organizationId/profile
 Content-Type: application/json
 ```
 
@@ -470,7 +470,7 @@ Notes:
 ### Change Organization Status
 
 ```http
-PATCH /user/api/v1/organizations/:id/status
+PATCH /user/api/v1/organizations/:organizationId/status
 Content-Type: application/json
 ```
 
@@ -490,7 +490,7 @@ Notes:
 ### Get Organization Details
 
 ```http
-GET /user/api/v1/organizations/:id
+GET /user/api/v1/organizations/:organizationId
 ```
 
 Returns the organization, the current user's membership, and counts for members,
@@ -505,9 +505,124 @@ GET /user/api/v1/organizations
 Returns organizations the authenticated user owns or belongs to as an active
 member.
 
+## App Registry Endpoints
+
+Mounted at `/user/api/v1/apps`.
+
+All app registry routes require:
+
+```http
+Authorization: Bearer <accessToken>
+```
+
+### Register App
+
+```http
+POST /user/api/v1/apps
+Content-Type: application/json
+```
+
+Body:
+
+```json
+{
+  "name": "Point of Sale",
+  "key": "pos",
+  "description": "Retail sales app",
+  "iconUrl": "https://cdn.example/pos.png",
+  "appUrl": "https://pos.example"
+}
+```
+
+Notes:
+
+- `key` is provided by the frontend and stored as provided.
+- App keys are unique: no two apps can share the same key.
+- Duplicate app keys return `409 Conflict`.
+- `key` is required and cannot exceed 100 characters.
+- `status` defaults to `ACTIVE`.
+
+### List Available Apps
+
+```http
+GET /user/api/v1/apps
+```
+
+Returns active apps by default. Use `includeDisabled=true` to include disabled
+apps.
+
+### Get App Details
+
+```http
+GET /user/api/v1/apps/:key
+```
+
+Returns app details by app key, including counts for organization access,
+permissions, and roles.
+
+### Update App Details
+
+```http
+PATCH /user/api/v1/apps/:key/details
+Content-Type: application/json
+```
+
+Body:
+
+```json
+{
+  "name": "Inventory Manager",
+  "description": null
+}
+```
+
+Notes:
+
+- App keys cannot be updated after registration.
+
+### Activate Or Disable App
+
+```http
+PATCH /user/api/v1/apps/:key/status
+Content-Type: application/json
+```
+
+Body:
+
+```json
+{
+  "status": "DISABLED"
+}
+```
+
+`status` must be `ACTIVE` or `DISABLED`.
+
+## Organization App Access Endpoints
+
+Mounted at `/user/api/v1/organizations/:organizationId/apps`.
+
+All organization app routes require:
+
+```http
+Authorization: Bearer <accessToken>
+```
+
+### List Organization Apps
+
+```http
+GET /user/api/v1/organizations/:organizationId/apps
+```
+
+Returns active app access records for active organization members. Results only
+include records where both `organization_apps.status` and `apps.status` are
+`ACTIVE`.
+
+App access is not enabled or disabled by organization owners through this API.
+Subscription/payment-controlled access will be added later.
+
 ## Organization Member Endpoints
 
-Mounted at `/user/api/v1/organizations`.
+Mounted at `/user/api/v1/organizations/:organizationId/members`.
 
 All member management routes require:
 
@@ -591,12 +706,12 @@ owners or other admins.
 
 ## Organization Invitation Endpoints
 
-Mounted at `/user/api/v1/organizations`.
+Mounted at `/user/api/v1/organizations/:organizationId/invites`.
 
 ### Create Staff Invitation
 
 ```http
-POST /user/api/v1/organizations/:organizationId/invitations
+POST /user/api/v1/organizations/:organizationId/invites
 Authorization: Bearer <accessToken>
 Content-Type: application/json
 ```
@@ -619,7 +734,7 @@ Notes:
 ### Send Invitation Email
 
 ```http
-POST /user/api/v1/organizations/:organizationId/invitations/:invitationId/send-email
+POST /user/api/v1/organizations/:organizationId/invites/:invitationId/send-email
 Authorization: Bearer <accessToken>
 ```
 
@@ -628,7 +743,7 @@ Sends the `App_Organization_Invitation` email using `INVITATION_ACCEPT_URL`.
 ### Validate Invitation Token
 
 ```http
-GET /user/api/v1/organizations/:organizationId/invitations/validate/:token
+GET /user/api/v1/organizations/:organizationId/invites/validate/:token
 ```
 
 Returns safe invitation details when the token is pending and unexpired.
@@ -636,7 +751,7 @@ Returns safe invitation details when the token is pending and unexpired.
 ### Accept Invitation
 
 ```http
-POST /user/api/v1/organizations/:organizationId/invitations/accept
+POST /user/api/v1/organizations/:organizationId/invites/accept
 Authorization: Bearer <accessToken>
 Content-Type: application/json
 ```
@@ -654,7 +769,7 @@ The authenticated user's email must match the invitation email.
 ### Expire Old Invitations
 
 ```http
-PATCH /user/api/v1/organizations/:organizationId/invitations/expire-old
+PATCH /user/api/v1/organizations/:organizationId/invites/expire-old
 Authorization: Bearer <accessToken>
 ```
 
@@ -663,7 +778,7 @@ Marks pending expired invitations as `EXPIRED`.
 ### Revoke Invitation
 
 ```http
-PATCH /user/api/v1/organizations/:organizationId/invitations/:invitationId/revoke
+PATCH /user/api/v1/organizations/:organizationId/invites/:invitationId/revoke
 Authorization: Bearer <accessToken>
 ```
 
@@ -672,7 +787,7 @@ Marks a pending invitation as `REVOKED`.
 ### Resend Invitation
 
 ```http
-POST /user/api/v1/organizations/:organizationId/invitations/:invitationId/resend
+POST /user/api/v1/organizations/:organizationId/invites/:invitationId/resend
 Authorization: Bearer <accessToken>
 ```
 

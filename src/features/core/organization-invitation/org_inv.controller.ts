@@ -1,6 +1,7 @@
 import { Response } from "express";
 import asyncHandler from "express-async-handler";
 import {
+  AccountStatus,
   InvitationStatus,
   MemberStatus,
   OrganizationRole,
@@ -11,6 +12,7 @@ import { parseId } from "../../../utils/parseId.js";
 import { isValidEmail } from "../../../utils/validators.js";
 import {
   authenticatedUserId,
+  isActiveAccount,
   normalizeOptionalString,
   organizationIdFromParams,
 } from "../organization/org.helpers.js";
@@ -304,6 +306,14 @@ export const validateInvitationToken = asyncHandler(
       return;
     }
 
+    if (invitation.organization.status !== AccountStatus.ACTIVE) {
+      res.status(403).json({
+        success: false,
+        message: "This organization is not active.",
+      });
+      return;
+    }
+
     if (await expireInvitationIfNeeded(invitation)) {
       res.status(400).json({
         success: false,
@@ -352,10 +362,10 @@ export const acceptInvitation = asyncHandler(
 
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, email: true, isActive: true },
+      select: { id: true, email: true, isActive: true, status: true },
     });
 
-    if (!user || !user.isActive) {
+    if (!user || !isActiveAccount(user)) {
       res.status(403).json({
         success: false,
         message: "Your account is not active.",
@@ -383,6 +393,14 @@ export const acceptInvitation = asyncHandler(
       res.status(404).json({
         success: false,
         message: "Invitation not found",
+      });
+      return;
+    }
+
+    if (invitation.organization.status !== AccountStatus.ACTIVE) {
+      res.status(403).json({
+        success: false,
+        message: "This organization is not active.",
       });
       return;
     }

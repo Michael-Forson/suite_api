@@ -1,7 +1,10 @@
 import {
+  AppStatus,
   AuthProvider,
   InvitationStatus,
   MemberStatus,
+  OrganizationAppAccessType,
+  OrganizationAppStatus,
   OrganizationRole,
 } from "../generated/prisma/enums.js";
 import { prisma } from "../prisma.js";
@@ -99,6 +102,47 @@ export async function createTestMember({
   });
 
   return { user: memberUser, member };
+}
+
+export async function createTestApp(overrides: Record<string, any> = {}) {
+  const id = nextId("app");
+
+  return prisma.app.create({
+    data: {
+      name: "Test App",
+      key: id,
+      status: AppStatus.ACTIVE,
+      ...overrides,
+    },
+  });
+}
+
+export async function createTestOrganizationApp({
+  organizationId,
+  app,
+  enabledBy = null,
+  status = OrganizationAppStatus.ACTIVE,
+  accessType = OrganizationAppAccessType.FREE,
+}: {
+  organizationId: bigint;
+  app?: Awaited<ReturnType<typeof createTestApp>>;
+  enabledBy?: bigint | null;
+  status?: OrganizationAppStatus;
+  accessType?: OrganizationAppAccessType;
+}) {
+  const organizationApp = await prisma.organizationApp.create({
+    data: {
+      organizationId,
+      appId: (app || (await createTestApp())).id,
+      status,
+      accessType,
+      enabledBy,
+      disabledAt: status === OrganizationAppStatus.DISABLED ? new Date() : null,
+    },
+    include: { app: true },
+  });
+
+  return organizationApp;
 }
 
 export async function createTestInvitation({

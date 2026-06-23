@@ -1,9 +1,6 @@
 import { Response } from "express";
-import {
-  AccountStatus,
-  MemberStatus,
-  OrganizationRole,
-} from "../../../generated/prisma/enums.js";
+import { AccountStatus } from "../../../generated/prisma/enums.js";
+import { Prisma } from "../../../generated/prisma/client.js";
 import { AuthRequest } from "../../../middleware/users/auth.middleware.js";
 import { prisma } from "../../../prisma.js";
 import { parseId } from "../../../utils/parseId.js";
@@ -47,6 +44,10 @@ export const isValidOrganizationStatus = (
 ): status is AccountStatus =>
   typeof status === "string" && VALID_STATUSES.includes(status as AccountStatus);
 
+export const isActiveAccount = (
+  account: { isActive: boolean; status: AccountStatus } | null,
+) => !!account && account.isActive && account.status === AccountStatus.ACTIVE;
+
 export const serializeOrganization = <
   T extends {
     id: bigint;
@@ -88,6 +89,13 @@ export const normalizeOptionalString = (value: unknown) => {
   return trimmed.length ? trimmed : null;
 };
 
+export const isOptionalStringValue = (value: unknown) =>
+  value === undefined || value === null || typeof value === "string";
+
+export const isUniqueConstraintError = (error: unknown) =>
+  error instanceof Prisma.PrismaClientKnownRequestError &&
+  error.code === "P2002";
+
 export const slugify = (value: string) =>
   value
     .trim()
@@ -123,99 +131,6 @@ export const validateContactFields = (
   }
 
   return null;
-};
-
-const findMembership = async (organizationId: bigint, userId: bigint) =>
-  prisma.organizationMember.findUnique({
-    where: {
-      organizationId_userId: {
-        organizationId,
-        userId,
-      },
-    },
-    select: {
-      id: true,
-      organizationRole: true,
-      status: true,
-    },
-  });
-
-export const requireMembership = async (
-  organizationId: bigint,
-  userId: bigint,
-  res: Response,
-) => {
-  const organization = await prisma.organization.findUnique({
-    where: { id: organizationId },
-    select: { ownerId: true },
-  });
-
-  if (!organization) {
-    res.status(404).json({
-      success: false,
-      message: "Organization not found",
-    });
-    return null;
-  }
-
-  if (organization.ownerId === userId) {
-    return {
-      organizationRole: OrganizationRole.OWNER,
-      status: MemberStatus.ACTIVE,
-    };
-  }
-
-  const membership = await findMembership(organizationId, userId);
-  if (!membership || membership.status !== MemberStatus.ACTIVE) {
-    res.status(403).json({
-      success: false,
-      message: "You do not have access to this organization.",
-    });
-    return null;
-  }
-
-  return membership;
-};
-
-export const requireOwnerOrAdmin = async (
-  organizationId: bigint,
-  userId: bigint,
-  res: Response,
-) => {
-  const membership = await requireMembership(organizationId, userId, res);
-  if (!membership) return null;
-
-  if (
-    membership.organizationRole !== OrganizationRole.OWNER &&
-    membership.organizationRole !== OrganizationRole.ADMIN
-  ) {
-    res.status(403).json({
-      success: false,
-      message: "Only organization owners and admins can perform this action.",
-    });
-    return null;
-  }
-
-  return membership;
-};
-
-export const requireOwner = async (
-  organizationId: bigint,
-  userId: bigint,
-  res: Response,
-) => {
-  const membership = await requireMembership(organizationId, userId, res);
-  if (!membership) return null;
-
-  if (membership.organizationRole !== OrganizationRole.OWNER) {
-    res.status(403).json({
-      success: false,
-      message: "Only the organization owner can perform this action.",
-    });
-    return null;
-  }
-
-  return membership;
 };
 
 export const authenticatedUserId = (req: AuthRequest, res: Response) => {

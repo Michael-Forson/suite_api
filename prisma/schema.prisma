@@ -122,6 +122,7 @@ model User {
   organizationMemberships     OrganizationMember[]     @relation("OrganizationMemberUser")
   sentMemberInvitations       OrganizationMember[]     @relation("OrganizationMemberInviter")
   enabledOrganizationApps     OrganizationApp[]        @relation("OrganizationAppEnabledBy")
+  disabledOrganizationApps    OrganizationApp[]        @relation("OrganizationAppDisabledBy")
   createdRoles                Role[]                   @relation("RoleCreatedBy")
   createdRolePermissions      RolePermission[]         @relation("RolePermissionCreatedBy")
   assignedMemberAppRoles      MemberAppRole[]          @relation("MemberAppRoleAssignedBy")
@@ -193,7 +194,6 @@ model App {
   iconUrl      String?   @map("icon_url") @db.VarChar(500)
   appUrl       String?   @map("app_url") @db.VarChar(500)
   status       AppStatus @default(ACTIVE)
-  isStandalone Boolean   @default(false) @map("is_standalone")
   createdAt    DateTime  @default(now()) @map("created_at")
   updatedAt    DateTime  @updatedAt @map("updated_at")
 
@@ -203,7 +203,6 @@ model App {
   memberAppRoles   MemberAppRole[]
 
   @@index([status])
-  @@index([isStandalone])
   @@map("apps")
 }
 
@@ -215,6 +214,7 @@ model OrganizationApp {
   accessType     OrganizationAppAccessType @default(FREE) @map("access_type")
   enabledBy      BigInt?                   @map("enabled_by")
   enabledAt      DateTime                  @default(now()) @map("enabled_at")
+  disabledBy     BigInt?                   @map("disabled_by")
   disabledAt     DateTime?                 @map("disabled_at")
   createdAt      DateTime                  @default(now()) @map("created_at")
   updatedAt      DateTime                  @updatedAt @map("updated_at")
@@ -222,12 +222,14 @@ model OrganizationApp {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   app          App          @relation(fields: [appId], references: [id], onDelete: Cascade)
   enabler      User?        @relation("OrganizationAppEnabledBy", fields: [enabledBy], references: [id], onDelete: SetNull)
+  disabler     User?        @relation("OrganizationAppDisabledBy", fields: [disabledBy], references: [id], onDelete: SetNull)
 
   @@unique([organizationId, appId])
   @@index([appId])
   @@index([status])
   @@index([accessType])
   @@index([enabledBy])
+  @@index([disabledBy])
   @@map("organization_apps")
 }
 
