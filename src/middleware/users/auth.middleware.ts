@@ -19,7 +19,10 @@ export const optionalAuthenticate = async (
   if (authHeader && authHeader.startsWith("Bearer ")) {
     try {
       const token = authHeader.substring(7);
-      const decoded = verifyAccessToken(token) as { id: string; type?: string };
+      const decoded = verifyAccessToken(token, "user") as {
+        id: string;
+        type?: string;
+      };
       if (decoded.type === "user") {
         req.userId = decoded.id;
       }
@@ -49,7 +52,10 @@ export const authenticate = async (
   const token = authHeader.substring(7); // Remove "Bearer " prefix
 
   try {
-    const decoded = verifyAccessToken(token) as { id: string; type?: string };
+    const decoded = verifyAccessToken(token, "user") as {
+      id: string;
+      type?: string;
+    };
 
     if (decoded.type !== "user") {
       res.status(401).json({

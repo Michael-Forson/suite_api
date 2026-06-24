@@ -1,6 +1,7 @@
 import { prisma } from "../prisma.js";
 
 const TABLES = [
+  "super_admins",
   "member_app_roles",
   "role_permissions",
   "roles",

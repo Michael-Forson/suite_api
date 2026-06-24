@@ -87,11 +87,31 @@ enum MemberAppRoleStatus {
   DISABLED
 }
 
+enum SuperAdminStatus {
+  ACTIVE
+  DISABLED
+}
+
 enum InvitationStatus {
   PENDING
   ACCEPTED
   EXPIRED
   REVOKED
+}
+
+model SuperAdmin {
+  id          BigInt           @id @default(autoincrement())
+  firstName   String           @map("first_name") @db.VarChar(100)
+  lastName    String           @map("last_name") @db.VarChar(100)
+  email       String           @unique @db.VarChar(255)
+  password    String           @db.VarChar(255)
+  status      SuperAdminStatus @default(ACTIVE)
+  lastLoginAt DateTime?        @map("last_login_at")
+  createdAt   DateTime         @default(now()) @map("created_at")
+  updatedAt   DateTime         @updatedAt @map("updated_at")
+
+  @@index([status])
+  @@map("super_admins")
 }
 
 model User {
@@ -187,15 +207,15 @@ model OrganizationMember {
 }
 
 model App {
-  id           BigInt    @id @default(autoincrement())
-  name         String    @db.VarChar(150)
-  key          String    @unique @db.VarChar(100)
-  description  String?   @db.Text
-  iconUrl      String?   @map("icon_url") @db.VarChar(500)
-  appUrl       String?   @map("app_url") @db.VarChar(500)
-  status       AppStatus @default(ACTIVE)
-  createdAt    DateTime  @default(now()) @map("created_at")
-  updatedAt    DateTime  @updatedAt @map("updated_at")
+  id          BigInt    @id @default(autoincrement())
+  name        String    @db.VarChar(150)
+  key         String    @unique @db.VarChar(100)
+  description String?   @db.Text
+  iconUrl     String?   @map("icon_url") @db.VarChar(500)
+  appUrl      String?   @map("app_url") @db.VarChar(500)
+  status      AppStatus @default(DISABLED)
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
 
   organizationApps OrganizationApp[]
   permissions      Permission[]

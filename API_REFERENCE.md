@@ -515,41 +515,13 @@ All app registry routes require:
 Authorization: Bearer <accessToken>
 ```
 
-### Register App
-
-```http
-POST /user/api/v1/apps
-Content-Type: application/json
-```
-
-Body:
-
-```json
-{
-  "name": "Point of Sale",
-  "key": "pos",
-  "description": "Retail sales app",
-  "iconUrl": "https://cdn.example/pos.png",
-  "appUrl": "https://pos.example"
-}
-```
-
-Notes:
-
-- `key` is provided by the frontend and stored as provided.
-- App keys are unique: no two apps can share the same key.
-- Duplicate app keys return `409 Conflict`.
-- `key` is required and cannot exceed 100 characters.
-- `status` defaults to `ACTIVE`.
-
 ### List Available Apps
 
 ```http
 GET /user/api/v1/apps
 ```
 
-Returns active apps by default. Use `includeDisabled=true` to include disabled
-apps.
+Returns active apps only. Disabled apps are never exposed through the user API.
 
 ### Get App Details
 
@@ -557,45 +529,51 @@ apps.
 GET /user/api/v1/apps/:key
 ```
 
-Returns app details by app key, including counts for organization access,
+Returns active app details by app key, including counts for organization access,
 permissions, and roles.
 
-### Update App Details
+## Super-Admin Endpoints
+
+Mounted at `/super-admin/api/v1`. Super-admin access and refresh JWTs use
+`type: "super-admin"` and cannot be replaced by business-user JWTs.
+
+### Super-Admin Authentication
 
 ```http
-PATCH /user/api/v1/apps/:key/details
-Content-Type: application/json
+POST /super-admin/api/v1/auth/login
+POST /super-admin/api/v1/auth/refresh
+GET /super-admin/api/v1/auth/me
 ```
 
-Body:
+Login accepts `email` and `password`. Refresh accepts `refreshToken`. Protected
+routes require `Authorization: Bearer <superAdminAccessToken>`.
 
-```json
-{
-  "name": "Inventory Manager",
-  "description": null
-}
-```
-
-Notes:
-
-- App keys cannot be updated after registration.
-
-### Activate Or Disable App
+### Manage Super-Admin Accounts
 
 ```http
-PATCH /user/api/v1/apps/:key/status
-Content-Type: application/json
+GET /super-admin/api/v1/accounts
+POST /super-admin/api/v1/accounts
+PATCH /super-admin/api/v1/accounts/:superAdminId
+PATCH /super-admin/api/v1/accounts/:superAdminId/status
 ```
 
-Body:
+Every authenticated super-admin has the same platform access. Accounts support
+`ACTIVE` and `DISABLED` statuses; there is no developer role. Passwords require
+at least 12 characters. A super-admin may change only their own password and
+must provide `currentPassword`.
 
-```json
-{
-  "status": "DISABLED"
-}
+### Manage Apps
+
+```http
+GET /super-admin/api/v1/apps
+POST /super-admin/api/v1/apps
+GET /super-admin/api/v1/apps/:key
+PATCH /super-admin/api/v1/apps/:key/details
+PATCH /super-admin/api/v1/apps/:key/status
 ```
 
-`status` must be `ACTIVE` or `DISABLED`.
+Authenticated super-admin accounts can manage apps. New apps default to
+`DISABLED`; app keys are unique and cannot be changed after registration.
 
 ## Organization App Access Endpoints
 
