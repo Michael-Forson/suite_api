@@ -53,6 +53,12 @@ Create a local `.env` file in `starter_api/`. Do not commit real secrets.
 | `NODE_ENV` | No | Enables development Prisma logging when set to `development`. |
 | `JWT_SECRET` | Yes | Signs user access tokens. |
 | `JWT_REFRESH_SECRET` | Yes | Signs user refresh tokens. |
+| `SUPER_ADMIN_JWT_SECRET` | Yes for super-admin auth | Signs super-admin access tokens. |
+| `SUPER_ADMIN_JWT_REFRESH_SECRET` | Yes for super-admin auth | Signs super-admin refresh tokens. |
+| `SUPER_ADMIN_EMAIL` | Yes for super-admin seed | Email for the initial super-admin account. |
+| `SUPER_ADMIN_PASSWORD` | Yes for super-admin seed | Password for the initial super-admin account; minimum 12 characters. |
+| `SUPER_ADMIN_FIRST_NAME` | No | Initial super-admin first name. Defaults to `Super`. |
+| `SUPER_ADMIN_LAST_NAME` | No | Initial super-admin last name. Defaults to `Operator`. |
 | `PAYSTACK_SECRET_KEY` | Yes for payments | Authorizes Paystack API calls. |
 | `PAYSTACK_WEBHOOK_SECRET` | No | Verifies Paystack webhook signatures. Defaults to `PAYSTACK_SECRET_KEY`. |
 | `PAYMENT_CALLBACK_URL` | No | Callback URL sent to Paystack transaction initialization. |
@@ -93,14 +99,23 @@ Common local commands:
 
 ```bash
 npx prisma generate
-npx prisma db push
-npm run test:db:push
+npx prisma migrate dev
+npm run test:db:migrate
 npm run seed
 ```
 
-`prisma/seed.ts` is currently a placeholder seed script. If config endpoints are
-used, add the required seed data for the relevant config tables after the schema
-is aligned with the source code.
+`npm run seed` and `npm run seed:super-admin` create the initial super-admin from
+the `SUPER_ADMIN_*` environment variables when it does not already exist.
+
+For an existing database created before migration history was added, mark the
+baseline as applied before deploying the feature migration:
+
+```bash
+npx prisma migrate resolve --applied 00000000000000_initial_baseline
+npx prisma migrate deploy
+```
+
+For a fresh database, run only `npx prisma migrate deploy`.
 
 ## Scripts
 
@@ -110,10 +125,11 @@ is aligned with the source code.
 | `npm run build` | Compiles TypeScript with `tsc` into `dist/`. |
 | `npm run start` | Runs the compiled server from `dist/index.js`. |
 | `npm run test` | Runs Jest with ESM VM module support. |
-| `npm run test:db:push` | Pushes the Prisma schema to `TESTDB_URL` after verifying the database name includes `test`. |
-| `npm run seed` | Runs `tsx prisma/seed.ts`. |
+| `npm run test:db:migrate` | Applies committed migrations to `TESTDB_URL` after verifying the database name includes `test`. |
+| `npm run test:db:push` | Backward-compatible alias for `test:db:migrate`. |
+| `npm run seed` | Creates the initial suite super-admin if it does not exist. |
 | `npm run seed:app-versions` | Runs the app-version seed runner when the referenced seed files exist. |
-| `npm run seed:admin` | Runs the admin seed runner when the referenced seed files exist. |
+| `npm run seed:super-admin` | Creates the initial suite super-admin if it does not exist. |
 | `npm run seed:banners` | Runs the banner seed runner when the referenced seed files exist. |
 
 ## Project Structure
@@ -151,6 +167,9 @@ The app mounts these route groups:
 - `/user/api/v1/payments`
 - `/user/api/v1/notifications`
 - `/user/api/v1/config`
+- `/super-admin/api/v1/auth`
+- `/super-admin/api/v1/accounts`
+- `/super-admin/api/v1/apps`
 - `/payment/callback`
 - `/`
 

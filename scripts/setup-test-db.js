@@ -19,7 +19,7 @@ try {
 
 if (!/test/i.test(databaseName)) {
   console.error(
-    `Refusing to push schema to database "${databaseName}". TESTDB_URL database name must include "test".`,
+    `Refusing to migrate database "${databaseName}". TESTDB_URL database name must include "test".`,
   );
   process.exit(1);
 }
@@ -27,7 +27,7 @@ if (!/test/i.test(databaseName)) {
 const prismaCliPath = fileURLToPath(
   new URL("../node_modules/prisma/build/index.js", import.meta.url),
 );
-const result = spawnSync(process.execPath, [prismaCliPath, "db", "push"], {
+const result = spawnSync(process.execPath, [prismaCliPath, "migrate", "deploy"], {
   stdio: "inherit",
   env: {
     ...process.env,

@@ -908,7 +908,7 @@ export const refreshToken = asyncHandler(
     }
 
     try {
-      const decoded = verifyRefreshToken(refreshToken) as {
+      const decoded = verifyRefreshToken(refreshToken, "user") as {
         id: string;
         type?: string;
       };

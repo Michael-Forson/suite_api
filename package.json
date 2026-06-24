@@ -7,17 +7,18 @@
   "author": "",
   "main": "index.js",
   "prisma": {
-    "seed": "tsx prisma/seed.ts"
+    "seed": "tsx prisma/seed-super-admin.ts"
   },
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
     "start": "node ./dist/index.js",
     "test": "cross-env NODE_OPTIONS=--experimental-vm-modules jest --runInBand",
+    "test:db:migrate": "node scripts/setup-test-db.js",
     "test:db:push": "node scripts/setup-test-db.js",
-    "seed": "tsx prisma/seed.ts",
+    "seed": "tsx prisma/seed-super-admin.ts",
     "seed:app-versions": "tsx prisma/seeds/run.ts app-versions",
-    "seed:admin": "tsx prisma/seeds/run.ts admin",
+    "seed:super-admin": "tsx prisma/seed-super-admin.ts",
     "seed:banners": "tsx prisma/seeds/run.ts banners"
   },
   "dependencies": {

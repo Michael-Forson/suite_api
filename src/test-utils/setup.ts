@@ -24,6 +24,11 @@ process.env.NODE_ENV = "test";
 process.env.JWT_SECRET = process.env.JWT_SECRET || "test-jwt-secret";
 process.env.JWT_REFRESH_SECRET =
   process.env.JWT_REFRESH_SECRET || "test-jwt-refresh-secret";
+process.env.SUPER_ADMIN_JWT_SECRET =
+  process.env.SUPER_ADMIN_JWT_SECRET || "test-super-admin-jwt-secret";
+process.env.SUPER_ADMIN_JWT_REFRESH_SECRET =
+  process.env.SUPER_ADMIN_JWT_REFRESH_SECRET ||
+  "test-super-admin-jwt-refresh-secret";
 process.env.PAYSTACK_SECRET_KEY =
   process.env.PAYSTACK_SECRET_KEY || "test-paystack-secret";
 process.env.PAYSTACK_WEBHOOK_SECRET =

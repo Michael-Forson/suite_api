@@ -1,4 +1,5 @@
 import {
+  SuperAdminStatus,
   AppStatus,
   AuthProvider,
   InvitationStatus,
@@ -9,6 +10,7 @@ import {
 } from "../generated/prisma/enums.js";
 import { prisma } from "../prisma.js";
 import crypto from "crypto";
+import { hashPassword } from "../utils/password.js";
 
 let sequence = 0;
 
@@ -38,6 +40,21 @@ export async function createTestUser(overrides: Record<string, any> = {}) {
       authProvider: AuthProvider.EMAIL,
       emailVerifiedAt: new Date(),
       isActive: true,
+      ...overrides,
+    },
+  });
+}
+
+export async function createTestSuperAdmin(overrides: Record<string, any> = {}) {
+  const id = nextId("super-admin");
+
+  return prisma.superAdmin.create({
+    data: {
+      firstName: "Suite",
+      lastName: "Operator",
+      email: `${id}@example.test`,
+      password: await hashPassword("Password123!"),
+      status: SuperAdminStatus.ACTIVE,
       ...overrides,
     },
   });

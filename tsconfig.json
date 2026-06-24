@@ -14,7 +14,6 @@
     "node_modules",
     "src/jobs/**/*",
     "src/scripts/**/*",
-    "src/middleware/common/appAudit.middleware.ts",
-    "src/middleware/admin/**/*"
+    "src/middleware/common/appAudit.middleware.ts"
   ]
 }

@@ -4,8 +4,12 @@ import {
   AppStatus,
   OrganizationAppStatus,
 } from "../../../generated/prisma/enums.js";
-import { authHeader } from "../../../test-utils/auth.js";
 import {
+  superAdminAuthHeader,
+  authHeader,
+} from "../../../test-utils/auth.js";
+import {
+  createTestSuperAdmin,
   createTestApp,
   createTestMember,
   createTestOrganization,
@@ -31,36 +35,23 @@ afterAll(async () => {
 });
 
 describe("app registry endpoints", () => {
-  it("registers an app with frontend-provided key and rejects duplicates", async () => {
+  it("prevents business users from managing the app registry", async () => {
     const user = await createTestUser();
 
-    const response = await request(app)
+    const registerResponse = await request(app)
       .post("/user/api/v1/apps")
       .set("Authorization", authHeader(user.id))
-      .send({
-        name: "Point of Sale",
-        key: "POS_APP",
-        description: "Retail sales app",
-      });
-
-    expect(response.status).toBe(201);
-    expect(response.body.data.app).toMatchObject({
-      name: "Point of Sale",
-      key: "POS_APP",
-      description: "Retail sales app",
-      status: AppStatus.ACTIVE,
-    });
-    expect(typeof response.body.data.app.id).toBe("string");
-
-    const duplicateResponse = await request(app)
-      .post("/user/api/v1/apps")
+      .send({ name: "Point of Sale", key: "POS_APP" });
+    const updateResponse = await request(app)
+      .patch("/user/api/v1/apps/POS_APP/details")
       .set("Authorization", authHeader(user.id))
-      .send({ name: "Duplicate POS", key: "POS_APP" });
+      .send({ name: "Changed" });
 
-    expect(duplicateResponse.status).toBe(409);
+    expect(registerResponse.status).toBe(404);
+    expect(updateResponse.status).toBe(404);
   });
 
-  it("lists active apps by default and can include disabled apps", async () => {
+  it("lists and returns only active apps to business users", async () => {
     const user = await createTestUser();
     await createTestApp({ name: "Inventory", key: "inventory" });
     await createTestApp({
@@ -78,66 +69,65 @@ describe("app registry endpoints", () => {
       "inventory",
     ]);
 
-    const allResponse = await request(app)
+    const ignoredQueryResponse = await request(app)
       .get("/user/api/v1/apps?includeDisabled=true")
       .set("Authorization", authHeader(user.id));
-
-    expect(allResponse.status).toBe(200);
-    expect(allResponse.body.data.apps.map((item: any) => item.key).sort()).toEqual(
-      ["accounting", "inventory"],
-    );
-  });
-
-  it("gets and updates app details by key", async () => {
-    const user = await createTestUser();
-    await createTestApp({
-      name: "Inventory",
-      key: "inventory",
-      description: "Old description",
-    });
-
-    const detailsResponse = await request(app)
-      .get("/user/api/v1/apps/inventory")
+    const disabledDetailsResponse = await request(app)
+      .get("/user/api/v1/apps/accounting")
       .set("Authorization", authHeader(user.id));
 
-    expect(detailsResponse.status).toBe(200);
-    expect(detailsResponse.body.data.app.key).toBe("inventory");
-
-    const updateResponse = await request(app)
-      .patch("/user/api/v1/apps/inventory/details")
-      .set("Authorization", authHeader(user.id))
-      .send({
-        name: "Inventory Manager",
-        description: null,
-      });
-
-    expect(updateResponse.status).toBe(200);
-    expect(updateResponse.body.data.app).toMatchObject({
-      name: "Inventory Manager",
-      key: "inventory",
-      description: null,
-    });
-
-    const keyUpdateResponse = await request(app)
-      .patch("/user/api/v1/apps/inventory/details")
-      .set("Authorization", authHeader(user.id))
-      .send({ key: "inventory-manager" });
-
-    expect(keyUpdateResponse.status).toBe(400);
-    expect(keyUpdateResponse.body.message).toBe("App key cannot be updated");
+    expect(ignoredQueryResponse.body.data.apps.map((item: any) => item.key)).toEqual([
+      "inventory",
+    ]);
+    expect(disabledDetailsResponse.status).toBe(404);
   });
 
-  it("activates or disables apps", async () => {
-    const user = await createTestUser();
-    await createTestApp({ name: "Accounting", key: "accounting" });
+  it("lets authenticated super-admins manage apps", async () => {
+    const superAdmin = await createTestSuperAdmin();
+    const otherSuperAdmin = await createTestSuperAdmin();
+
+    const createResponse = await request(app)
+      .post("/super-admin/api/v1/apps")
+      .set("Authorization", superAdminAuthHeader(otherSuperAdmin.id))
+      .send({
+        name: "Accounting",
+        key: "accounting",
+        description: "Finance app",
+      });
+    expect(createResponse.status).toBe(201);
+    expect(createResponse.body.data.app.status).toBe(AppStatus.DISABLED);
+
+    const duplicateResponse = await request(app)
+      .post("/super-admin/api/v1/apps")
+      .set("Authorization", superAdminAuthHeader(superAdmin.id))
+      .send({ name: "Duplicate Accounting", key: "accounting" });
+    expect(duplicateResponse.status).toBe(409);
 
     const statusResponse = await request(app)
-      .patch("/user/api/v1/apps/accounting/status")
-      .set("Authorization", authHeader(user.id))
-      .send({ status: AppStatus.DISABLED });
-
+      .patch("/super-admin/api/v1/apps/accounting/status")
+      .set(
+        "Authorization",
+        superAdminAuthHeader(superAdmin.id),
+      )
+      .send({ status: AppStatus.ACTIVE });
     expect(statusResponse.status).toBe(200);
-    expect(statusResponse.body.data.app.status).toBe(AppStatus.DISABLED);
+    expect(statusResponse.body.data.app.status).toBe(AppStatus.ACTIVE);
+
+    const updateResponse = await request(app)
+      .patch("/super-admin/api/v1/apps/accounting/details")
+      .set("Authorization", superAdminAuthHeader(otherSuperAdmin.id))
+      .send({ name: "Accounting Suite", description: null });
+    expect(updateResponse.status).toBe(200);
+    expect(updateResponse.body.data.app.name).toBe("Accounting Suite");
+
+    const listResponse = await request(app)
+      .get("/super-admin/api/v1/apps")
+      .set(
+        "Authorization",
+        superAdminAuthHeader(superAdmin.id),
+      );
+    expect(listResponse.status).toBe(200);
+    expect(listResponse.body.data.apps).toHaveLength(1);
   });
 });
 

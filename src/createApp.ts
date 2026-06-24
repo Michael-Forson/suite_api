@@ -12,6 +12,9 @@ import organizationRoutes from "./features/core/organization/org.routes.js";
 import paymentRoutes from "./features/config/payments/payment.routes.js";
 import notificationRoutes from "./features/config/notification/notification.router.js";
 import configRoutes from "./features/config/config.routes.js";
+import superAdminAuthRoutes from "./features/super-admin/authentication/super_admin_auth.routes.js";
+import superAdminAccountRoutes from "./features/super-admin/account/account.routes.js";
+import superAdminAppRoutes from "./features/super-admin/app/app.routes.js";
 import { generalLimiter } from "./middleware/common/rateLimiter.middleware.js";
 
 dotenv.config();
@@ -40,7 +43,8 @@ export function createApp() {
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
 
-  app.use("/api", generalLimiter);
+  app.use("/user/api", generalLimiter);
+  app.use("/super-admin/api", generalLimiter);
 
   app.use("/user/api/v1/config", configRoutes);
   app.use("/user/api/v1/auth", authRoutes);
@@ -51,6 +55,9 @@ export function createApp() {
   app.use("/user/api/v1/organizations", organizationRoutes);
   app.use("/user/api/v1/payments", paymentRoutes);
   app.use("/user/api/v1/notifications", notificationRoutes);
+  app.use("/super-admin/api/v1/auth", superAdminAuthRoutes);
+  app.use("/super-admin/api/v1/accounts", superAdminAccountRoutes);
+  app.use("/super-admin/api/v1/apps", superAdminAppRoutes);
 
   app.get("/payment/callback", (req, res) => {
     const reference = req.query.reference;

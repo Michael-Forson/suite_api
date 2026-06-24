@@ -6,20 +6,12 @@ import {
 } from "../../../generated/prisma/enums.js";
 import { AuthRequest } from "../../../middleware/users/auth.middleware.js";
 import { prisma } from "../../../prisma.js";
-import { normalizeOptionalString } from "../organization/org.helpers.js";
 import { OrganizationAccessRequest } from "../organization/org.middleware.js";
 import {
   APP_SELECT,
   appKeyFromValue,
-  isValidAppStatus,
   serializeApp,
-  validAppStatuses,
 } from "./app.helpers.js";
-import {
-  ChangeAppStatusRequestBody,
-  RegisterAppRequestBody,
-  UpdateAppDetailsRequestBody,
-} from "./app.types.js";
 
 const ORGANIZATION_APP_SELECT = {
   id: true,
@@ -126,68 +118,6 @@ const ensureAuthenticated = (req: AuthRequest, res: Response) => {
   return true;
 };
 
-export const registerApp = asyncHandler(
-  async (req: AuthRequest, res: Response) => {
-    if (!ensureAuthenticated(req, res)) return;
-
-    const body: RegisterAppRequestBody = req.body;
-    const name = normalizeOptionalString(body.name);
-    if (!name || typeof name !== "string") {
-      res.status(400).json({ success: false, message: "App name is required" });
-      return;
-    }
-
-    const key = appKeyFromValue(body.key);
-    if (!key) {
-      res.status(400).json({
-        success: false,
-        message: "App key is required and must be 100 characters or fewer",
-      });
-      return;
-    }
-
-    const status = body.status ?? AppStatus.ACTIVE;
-    if (!isValidAppStatus(status)) {
-      res.status(400).json({
-        success: false,
-        message: `Status must be one of: ${validAppStatuses()}`,
-      });
-      return;
-    }
-
-    const existing = await prisma.app.findUnique({
-      where: { key },
-      select: { id: true },
-    });
-
-    if (existing) {
-      res.status(409).json({
-        success: false,
-        message: "App key is already registered",
-      });
-      return;
-    }
-
-    const app = await prisma.app.create({
-      data: {
-        name,
-        key,
-        description: normalizeOptionalString(body.description) as string | null,
-        iconUrl: normalizeOptionalString(body.iconUrl) as string | null,
-        appUrl: normalizeOptionalString(body.appUrl) as string | null,
-        status,
-      },
-      select: APP_SELECT,
-    });
-
-    res.status(201).json({
-      success: true,
-      message: "App registered successfully",
-      data: { app: serializeApp(app) },
-    });
-  },
-);
-
 export const listOrganizationApps = asyncHandler(
   async (req: OrganizationAccessRequest, res: Response) => {
     const organizationId = req.organizationAccess?.organizationId;
@@ -218,129 +148,12 @@ export const listOrganizationApps = asyncHandler(
   },
 );
 
-export const updateAppDetails = asyncHandler(
-  async (req: AuthRequest, res: Response) => {
-    if (!ensureAuthenticated(req, res)) return;
-
-    const currentKey = appKeyFromValue(req.params.key);
-    if (!currentKey) {
-      res.status(400).json({ success: false, message: "Invalid app key" });
-      return;
-    }
-
-    const body: UpdateAppDetailsRequestBody = req.body;
-    const data: Record<string, string | null> = {};
-
-    if ("key" in body) {
-      res.status(400).json({
-        success: false,
-        message: "App key cannot be updated",
-      });
-      return;
-    }
-
-    if ("name" in body) {
-      const name = normalizeOptionalString(body.name);
-      if (!name || typeof name !== "string") {
-        res.status(400).json({
-          success: false,
-          message: "App name cannot be empty",
-        });
-        return;
-      }
-      data.name = name;
-    }
-
-    const current = await prisma.app.findUnique({
-      where: { key: currentKey },
-      select: { id: true },
-    });
-
-    if (!current) {
-      res.status(404).json({ success: false, message: "App not found" });
-      return;
-    }
-
-    for (const field of ["description", "iconUrl", "appUrl"] as const) {
-      if (field in body) {
-        data[field] = normalizeOptionalString(body[field]) as string | null;
-      }
-    }
-
-    if (!Object.keys(data).length) {
-      res.status(400).json({
-        success: false,
-        message: "Provide at least one app detail to update",
-      });
-      return;
-    }
-
-    const app = await prisma.app.update({
-      where: { key: currentKey },
-      data,
-      select: APP_SELECT,
-    });
-
-    res.status(200).json({
-      success: true,
-      message: "App details updated successfully",
-      data: { app: serializeApp(app) },
-    });
-  },
-);
-
-export const changeAppStatus = asyncHandler(
-  async (req: AuthRequest, res: Response) => {
-    if (!ensureAuthenticated(req, res)) return;
-
-    const key = appKeyFromValue(req.params.key);
-    if (!key) {
-      res.status(400).json({ success: false, message: "Invalid app key" });
-      return;
-    }
-
-    const { status }: ChangeAppStatusRequestBody = req.body;
-    if (!isValidAppStatus(status)) {
-      res.status(400).json({
-        success: false,
-        message: `Status must be one of: ${validAppStatuses()}`,
-      });
-      return;
-    }
-
-    const existing = await prisma.app.findUnique({
-      where: { key },
-      select: { id: true },
-    });
-    if (!existing) {
-      res.status(404).json({ success: false, message: "App not found" });
-      return;
-    }
-
-    const app = await prisma.app.update({
-      where: { key },
-      data: { status },
-      select: APP_SELECT,
-    });
-
-    res.status(200).json({
-      success: true,
-      message: "App status updated successfully",
-      data: { app: serializeApp(app) },
-    });
-  },
-);
-
 export const listAvailableApps = asyncHandler(
   async (req: AuthRequest, res: Response) => {
     if (!ensureAuthenticated(req, res)) return;
 
-    const includeDisabled = req.query.includeDisabled === "true";
-
     const apps = await prisma.app.findMany({
-      where: {
-        ...(includeDisabled ? {} : { status: AppStatus.ACTIVE }),
-      },
+      where: { status: AppStatus.ACTIVE },
       orderBy: { name: "asc" },
       select: {
         ...APP_SELECT,
@@ -371,8 +184,8 @@ export const getAppDetailsByKey = asyncHandler(
       return;
     }
 
-    const app = await prisma.app.findUnique({
-      where: { key },
+  const app = await prisma.app.findUnique({
+      where: { key, status: AppStatus.ACTIVE },
       select: {
         ...APP_SELECT,
         _count: {
