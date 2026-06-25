@@ -13,6 +13,7 @@ email, SMS, WhatsApp OTP, and S3-compatible storage.
 - Prisma 7 client generated into `src/generated/prisma`.
 - PostgreSQL access through `@prisma/adapter-pg`.
 - User authentication with JWT access and refresh tokens.
+- App-level role and permission management with immediate access updates.
 - Phone OTP flows through SMS and WhatsApp helpers.
 - Email verification helpers through Nodemailer.
 - Paystack payment initialization, verification, status polling, and webhook
@@ -170,6 +171,10 @@ The app mounts these route groups:
 - `/super-admin/api/v1/auth`
 - `/super-admin/api/v1/accounts`
 - `/super-admin/api/v1/apps`
+
+Super-admin app routes also manage each app's permission catalog and standard
+roles. Organization owners and admins can assign one standard role per regular
+member. Members without an explicit assignment use the app's default role.
 - `/payment/callback`
 - `/`
 

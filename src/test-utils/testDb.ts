@@ -3,8 +3,8 @@ import { prisma } from "../prisma.js";
 const TABLES = [
   "super_admins",
   "member_app_roles",
-  "role_permissions",
-  "roles",
+  "app_role_permissions",
+  "app_roles",
   "permissions",
   "organization_apps",
   "apps",

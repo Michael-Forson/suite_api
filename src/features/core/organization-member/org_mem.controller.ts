@@ -4,9 +4,9 @@ import { AuthRequest } from "../../../middleware/users/auth.middleware.js";
 import { prisma } from "../../../prisma.js";
 import {
   authenticatedUserId,
-  normalizeOptionalString,
-  organizationIdFromParams,
-} from "../organization/org.helpers.js";
+  idFromParams,
+} from "../../../utils/request.utils.js";
+import { normalizeOptionalString } from "../../../utils/validation.utils.js";
 import {
   canManageTargetMember,
   findTargetMember,
@@ -24,14 +24,12 @@ import {
   UpdateMemberJobTitleRequestBody,
 } from "./org_mem.types.js";
 
-const memberIdFromParams = organizationIdFromParams;
-
 export const listOrganizationMembers = asyncHandler(
   async (req: AuthRequest, res: Response) => {
     const userId = authenticatedUserId(req, res);
     if (!userId) return;
 
-    const organizationId = organizationIdFromParams(req.params.organizationId);
+    const organizationId = idFromParams(req.params.organizationId);
     if (!organizationId) {
       res
         .status(400)
@@ -61,8 +59,8 @@ export const updateMemberJobTitle = asyncHandler(
     const userId = authenticatedUserId(req, res);
     if (!userId) return;
 
-    const organizationId = organizationIdFromParams(req.params.organizationId);
-    const memberId = memberIdFromParams(req.params.memberId);
+    const organizationId = idFromParams(req.params.organizationId);
+    const memberId = idFromParams(req.params.memberId);
     if (!organizationId || !memberId) {
       res
         .status(400)
@@ -101,8 +99,8 @@ export const changeMemberRole = asyncHandler(
     const userId = authenticatedUserId(req, res);
     if (!userId) return;
 
-    const organizationId = organizationIdFromParams(req.params.organizationId);
-    const memberId = memberIdFromParams(req.params.memberId);
+    const organizationId = idFromParams(req.params.organizationId);
+    const memberId = idFromParams(req.params.memberId);
     if (!organizationId || !memberId) {
       res
         .status(400)
@@ -144,8 +142,8 @@ export const changeMemberStatus = asyncHandler(
     const userId = authenticatedUserId(req, res);
     if (!userId) return;
 
-    const organizationId = organizationIdFromParams(req.params.organizationId);
-    const memberId = memberIdFromParams(req.params.memberId);
+    const organizationId = idFromParams(req.params.organizationId);
+    const memberId = idFromParams(req.params.memberId);
     if (!organizationId || !memberId) {
       res
         .status(400)
@@ -187,8 +185,8 @@ export const removeOrganizationMember = asyncHandler(
     const userId = authenticatedUserId(req, res);
     if (!userId) return;
 
-    const organizationId = organizationIdFromParams(req.params.organizationId);
-    const memberId = memberIdFromParams(req.params.memberId);
+    const organizationId = idFromParams(req.params.organizationId);
+    const memberId = idFromParams(req.params.memberId);
     if (!organizationId || !memberId) {
       res
         .status(400)

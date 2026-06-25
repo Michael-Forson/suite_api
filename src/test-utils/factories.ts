@@ -7,6 +7,8 @@ import {
   OrganizationAppAccessType,
   OrganizationAppStatus,
   OrganizationRole,
+  AppPermissionStatus,
+  RoleStatus,
 } from "../generated/prisma/enums.js";
 import { prisma } from "../prisma.js";
 import crypto from "crypto";
@@ -160,6 +162,85 @@ export async function createTestOrganizationApp({
   });
 
   return organizationApp;
+}
+
+export async function createTestPermission({
+  appId,
+  key = nextId("permission"),
+  label = "Test Permission",
+  status = AppPermissionStatus.ACTIVE,
+  ...overrides
+}: {
+  appId: bigint;
+  key?: string;
+  label?: string;
+  status?: AppPermissionStatus;
+  [key: string]: any;
+}) {
+  return prisma.appPermission.create({
+    data: {
+      appId,
+      key,
+      label,
+      status,
+      ...overrides,
+    },
+  });
+}
+
+export async function createTestAppRole({
+  appId,
+  key = nextId("role"),
+  name = "Test Role",
+  isDefault = false,
+  status = RoleStatus.ACTIVE,
+  appPermissionIds = [],
+  ...overrides
+}: {
+  appId: bigint;
+  key?: string;
+  name?: string;
+  isDefault?: boolean;
+  status?: RoleStatus;
+  appPermissionIds?: bigint[];
+  [key: string]: any;
+}) {
+  return prisma.appRole.create({
+    data: {
+      appId,
+      key,
+      name,
+      isDefault,
+      status,
+      ...overrides,
+      appRolePermissions: {
+        create: appPermissionIds.map((appPermissionId) => ({
+          appPermissionId,
+        })),
+      },
+    },
+  });
+}
+
+export async function assignTestAppRole({
+  organizationMemberId,
+  appId,
+  appRoleId,
+  assignedBy = null,
+}: {
+  organizationMemberId: bigint;
+  appId: bigint;
+  appRoleId: bigint;
+  assignedBy?: bigint | null;
+}) {
+  return prisma.memberAppRole.create({
+    data: {
+      organizationMemberId,
+      appId,
+      appRoleId,
+      assignedBy,
+    },
+  });
 }
 
 export async function createTestInvitation({

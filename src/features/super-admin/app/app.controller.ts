@@ -1,6 +1,5 @@
 import { Response } from "express";
 import asyncHandler from "express-async-handler";
-import { Prisma } from "../../../generated/prisma/client.js";
 import { AppStatus } from "../../../generated/prisma/enums.js";
 import { SuperAdminAuthRequest } from "../../../middleware/super-admin/superAdminAuth.middleware.js";
 import { prisma } from "../../../prisma.js";
@@ -10,12 +9,9 @@ import {
   isValidAppStatus,
   serializeApp,
   validAppStatuses,
-} from "../../core/app/app.helpers.js";
-import { normalizeOptionalString } from "../../core/organization/org.helpers.js";
-
-const isUniqueConstraintError = (error: unknown) =>
-  error instanceof Prisma.PrismaClientKnownRequestError &&
-  error.code === "P2002";
+} from "../../../utils/app.utils.js";
+import { isUniqueConstraintError } from "../../../utils/prisma.utils.js";
+import { normalizeOptionalString } from "../../../utils/validation.utils.js";
 
 export const registerApp = asyncHandler(
   async (req: SuperAdminAuthRequest, res: Response) => {
@@ -85,8 +81,8 @@ export const listApps = asyncHandler(async (_req, res) => {
       _count: {
         select: {
           organizationApps: true,
-          permissions: true,
-          roles: true,
+          appPermissions: true,
+          appRoles: true,
         },
       },
     },
@@ -112,8 +108,8 @@ export const getAppDetails = asyncHandler(async (req, res) => {
       _count: {
         select: {
           organizationApps: true,
-          permissions: true,
-          roles: true,
+          appPermissions: true,
+          appRoles: true,
         },
       },
     },

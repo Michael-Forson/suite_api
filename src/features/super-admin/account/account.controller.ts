@@ -1,72 +1,22 @@
 import { Response } from "express";
 import asyncHandler from "express-async-handler";
-import { Prisma } from "../../../generated/prisma/client.js";
 import { SuperAdminStatus } from "../../../generated/prisma/enums.js";
 import { SuperAdminAuthRequest } from "../../../middleware/super-admin/superAdminAuth.middleware.js";
 import { prisma } from "../../../prisma.js";
 import { comparePassword, hashPassword } from "../../../utils/password.js";
+import { isUniqueConstraintError } from "../../../utils/prisma.utils.js";
 import { isValidEmail } from "../../../utils/validators.js";
 import {
   SUPER_ADMIN_SELECT,
   serializeSuperAdmin,
-} from "../authentication/super_admin_auth.controller.js";
-
-const parseSuperAdminId = (value: unknown) => {
-  if (typeof value !== "string" || !/^\d+$/.test(value)) return null;
-  return BigInt(value);
-};
-
-const normalizeText = (value: unknown) =>
-  typeof value === "string" ? value.trim() : "";
-
-const isSuperAdminStatus = (value: unknown): value is SuperAdminStatus =>
-  typeof value === "string" &&
-  Object.values(SuperAdminStatus).includes(value as SuperAdminStatus);
-
-const isUniqueConstraintError = (error: unknown) =>
-  error instanceof Prisma.PrismaClientKnownRequestError &&
-  error.code === "P2002";
-
-const isWriteConflictError = (error: unknown) =>
-  error instanceof Prisma.PrismaClientKnownRequestError &&
-  error.code === "P2034";
-
-const isValidSuperAdminPassword = (password: string) => password.length >= 12;
-
-const updateStatusSafely = async (
-  superAdminId: bigint,
-  status: SuperAdminStatus,
-) => {
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    try {
-      return await prisma.$transaction(
-        async (tx) => {
-          if (status === SuperAdminStatus.DISABLED) {
-            const activeCount = await tx.superAdmin.count({
-              where: {
-                id: { not: superAdminId },
-                status: SuperAdminStatus.ACTIVE,
-              },
-            });
-            if (activeCount === 0) return null;
-          }
-
-          return tx.superAdmin.update({
-            where: { id: superAdminId },
-            data: { status },
-            select: SUPER_ADMIN_SELECT,
-          });
-        },
-        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
-      );
-    } catch (error) {
-      if (isWriteConflictError(error) && attempt < 2) continue;
-      throw error;
-    }
-  }
-
-  throw new Error("Unable to update super-admin status.");
-};
+} from "../authentication/super_admin_auth.helpers.js";
+import {
+  isSuperAdminStatus,
+  isValidSuperAdminPassword,
+  normalizeText,
+  parseSuperAdminId,
+  updateStatusSafely,
+} from "./account.helpers.js";
 
 export const createSuperAdmin = asyncHandler(
   async (req: SuperAdminAuthRequest, res: Response) => {

@@ -1,9 +1,7 @@
 import { Response } from "express";
 import { AccountStatus } from "../../../generated/prisma/enums.js";
-import { Prisma } from "../../../generated/prisma/client.js";
-import { AuthRequest } from "../../../middleware/users/auth.middleware.js";
 import { prisma } from "../../../prisma.js";
-import { parseId } from "../../../utils/parseId.js";
+import { isOptionalStringValue } from "../../../utils/validation.utils.js";
 import { isValidEmail, isValidPhone } from "../../../utils/validators.js";
 
 export const ORGANIZATION_SELECT = {
@@ -35,6 +33,31 @@ export const ORGANIZATION_PROFILE_FIELDS = [
   "address",
 ] as const;
 
+export const CREATE_OPTIONAL_STRING_FIELDS = [
+  "slug",
+  ...ORGANIZATION_PROFILE_FIELDS,
+] as const;
+
+export const MAX_CREATE_SLUG_ATTEMPTS = 3;
+
+export const validateOptionalStringFields = (
+  body: Record<string, unknown>,
+  fields: readonly string[],
+  res: Response,
+) => {
+  for (const field of fields) {
+    if (field in body && !isOptionalStringValue(body[field])) {
+      res.status(400).json({
+        success: false,
+        message: `${field} must be a string or null`,
+      });
+      return false;
+    }
+  }
+
+  return true;
+};
+
 const VALID_STATUSES = Object.values(AccountStatus);
 
 export const validOrganizationStatuses = () => VALID_STATUSES.join(", ");
@@ -43,10 +66,6 @@ export const isValidOrganizationStatus = (
   status: unknown,
 ): status is AccountStatus =>
   typeof status === "string" && VALID_STATUSES.includes(status as AccountStatus);
-
-export const isActiveAccount = (
-  account: { isActive: boolean; status: AccountStatus } | null,
-) => !!account && account.isActive && account.status === AccountStatus.ACTIVE;
 
 export const serializeOrganization = <
   T extends {
@@ -64,37 +83,31 @@ export const serializeOrganization = <
       createdAt: Date;
       updatedAt: Date;
     }>;
-    _count?: { members?: number; apps?: number; roles?: number };
+    _count?: { members?: number; apps?: number };
   },
 >(
   organization: T,
-) => ({
-  ...organization,
-  id: organization.id.toString(),
-  ownerId: organization.ownerId.toString(),
-  members: organization.members?.map((member) => ({
-    ...member,
-    id: member.id.toString(),
-    organizationId: member.organizationId.toString(),
-    userId: member.userId.toString(),
-    invitedBy: member.invitedBy?.toString() ?? null,
-  })),
-});
-
-export const normalizeOptionalString = (value: unknown) => {
-  if (value === undefined) return undefined;
-  if (value === null) return null;
-  if (typeof value !== "string") return undefined;
-  const trimmed = value.trim();
-  return trimmed.length ? trimmed : null;
+) => {
+  const { _count, ...rest } = organization;
+  return {
+    ...rest,
+    id: organization.id.toString(),
+    ownerId: organization.ownerId.toString(),
+    members: organization.members?.map((member) => ({
+      ...member,
+      id: member.id.toString(),
+      organizationId: member.organizationId.toString(),
+      userId: member.userId.toString(),
+      invitedBy: member.invitedBy?.toString() ?? null,
+    })),
+    _count: _count
+      ? {
+          members: _count.members,
+          apps: _count.apps,
+        }
+      : undefined,
+  };
 };
-
-export const isOptionalStringValue = (value: unknown) =>
-  value === undefined || value === null || typeof value === "string";
-
-export const isUniqueConstraintError = (error: unknown) =>
-  error instanceof Prisma.PrismaClientKnownRequestError &&
-  error.code === "P2002";
 
 export const slugify = (value: string) =>
   value
@@ -132,18 +145,3 @@ export const validateContactFields = (
 
   return null;
 };
-
-export const authenticatedUserId = (req: AuthRequest, res: Response) => {
-  if (!req.userId) {
-    res.status(401).json({
-      success: false,
-      message: "Authentication required.",
-    });
-    return null;
-  }
-
-  return BigInt(req.userId);
-};
-
-export const organizationIdFromParams = (id: string | string[] | undefined) =>
-  typeof id === "string" ? parseId(id) : null;

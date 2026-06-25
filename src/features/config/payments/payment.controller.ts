@@ -11,12 +11,7 @@ import {
 } from "./paymentProcessing.js";
 import { getCustomerPaymentEmail } from "../../../utils/paymentEmail.js";
 import { AuthRequest } from "../../../middleware/users/auth.middleware.js";
-
-const parsePaymentAmount = (amount: string | number | undefined) => {
-  const parsed =
-    typeof amount === "number" ? amount : Number.parseFloat(String(amount ?? ""));
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
-};
+import { parsePaymentAmount } from "./payment.helpers.js";
 
 export const initializePayment = asyncHandler(
   async (req: AuthRequest, res: Response) => {

@@ -7,7 +7,8 @@ import {
 } from "../../../generated/prisma/enums.js";
 import { AuthRequest } from "../../../middleware/users/auth.middleware.js";
 import { prisma } from "../../../prisma.js";
-import { isActiveAccount, organizationIdFromParams } from "./org.helpers.js";
+import { isActiveAccount } from "../../../utils/account.utils.js";
+import { idFromParams } from "../../../utils/request.utils.js";
 
 export interface OrganizationAccessContext {
   organizationId: bigint;
@@ -23,7 +24,7 @@ export interface OrganizationAccessRequest extends AuthRequest {
 }
 
 const organizationIdFromRequest = (req: AuthRequest) =>
-  organizationIdFromParams(req.params.organizationId);
+  idFromParams(req.params.organizationId);
 
 const resolveOrganizationAccess = async (
   req: AuthRequest,

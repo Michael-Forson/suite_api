@@ -5,7 +5,7 @@ import {
   OrganizationRole,
 } from "../../../generated/prisma/enums.js";
 import { prisma } from "../../../prisma.js";
-import { isActiveAccount } from "../organization/org.helpers.js";
+import { isActiveAccount } from "../../../utils/account.utils.js";
 
 export const MEMBER_SELECT = {
   id: true,

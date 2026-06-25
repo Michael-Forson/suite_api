@@ -82,6 +82,13 @@ enum RoleStatus {
   DISABLED
 }
 
+enum AppPermissionStatus {
+  ACTIVE
+  DISABLED
+
+  @@map("PermissionStatus")
+}
+
 enum MemberAppRoleStatus {
   ACTIVE
   DISABLED
@@ -143,8 +150,6 @@ model User {
   sentMemberInvitations       OrganizationMember[]     @relation("OrganizationMemberInviter")
   enabledOrganizationApps     OrganizationApp[]        @relation("OrganizationAppEnabledBy")
   disabledOrganizationApps    OrganizationApp[]        @relation("OrganizationAppDisabledBy")
-  createdRoles                Role[]                   @relation("RoleCreatedBy")
-  createdRolePermissions      RolePermission[]         @relation("RolePermissionCreatedBy")
   assignedMemberAppRoles      MemberAppRole[]          @relation("MemberAppRoleAssignedBy")
   sentOrganizationInvitations OrganizationInvitation[] @relation("OrganizationInvitationInviter")
 
@@ -173,7 +178,6 @@ model Organization {
   owner       User                     @relation("OrganizationOwner", fields: [ownerId], references: [id], onDelete: Restrict)
   members     OrganizationMember[]
   apps        OrganizationApp[]
-  roles       Role[]
   invitations OrganizationInvitation[]
 
   @@index([ownerId])
@@ -218,8 +222,8 @@ model App {
   updatedAt   DateTime  @updatedAt @map("updated_at")
 
   organizationApps OrganizationApp[]
-  permissions      Permission[]
-  roles            Role[]
+  appPermissions   AppPermission[]
+  appRoles         AppRole[]
   memberAppRoles   MemberAppRole[]
 
   @@index([status])
@@ -253,76 +257,69 @@ model OrganizationApp {
   @@map("organization_apps")
 }
 
-model Permission {
-  id                 BigInt   @id @default(autoincrement())
-  appId              BigInt   @map("app_id")
-  key                String   @db.VarChar(150)
-  label              String   @db.VarChar(150)
-  description        String?  @db.Text
-  category           String?  @db.VarChar(100)
-  isSystemPermission Boolean  @default(true) @map("is_system_permission")
-  createdAt          DateTime @default(now()) @map("created_at")
-  updatedAt          DateTime @updatedAt @map("updated_at")
+model AppPermission {
+  id                 BigInt              @id @default(autoincrement())
+  appId              BigInt              @map("app_id")
+  key                String              @db.VarChar(150)
+  label              String              @db.VarChar(150)
+  description        String?             @db.Text
+  category           String?             @db.VarChar(100)
+  isSystemPermission Boolean             @default(true) @map("is_system_permission")
+  status             AppPermissionStatus @default(ACTIVE)
+  createdAt          DateTime            @default(now()) @map("created_at")
+  updatedAt          DateTime            @updatedAt @map("updated_at")
 
-  app             App              @relation(fields: [appId], references: [id], onDelete: Cascade)
-  rolePermissions RolePermission[]
+  app                App                 @relation(fields: [appId], references: [id], onDelete: Cascade)
+  appRolePermissions AppRolePermission[]
 
   @@unique([appId, key])
   @@index([category])
   @@index([isSystemPermission])
+  @@index([status])
   @@map("permissions")
 }
 
-model Role {
-  id             BigInt     @id @default(autoincrement())
-  organizationId BigInt     @map("organization_id")
-  appId          BigInt     @map("app_id")
-  name           String     @db.VarChar(150)
-  description    String?    @db.Text
-  isSystemRole   Boolean    @default(false) @map("is_system_role")
-  isDefault      Boolean    @default(false) @map("is_default")
-  status         RoleStatus @default(ACTIVE)
-  createdBy      BigInt?    @map("created_by")
-  createdAt      DateTime   @default(now()) @map("created_at")
-  updatedAt      DateTime   @updatedAt @map("updated_at")
+model AppRole {
+  id          BigInt     @id @default(autoincrement())
+  appId       BigInt     @map("app_id")
+  key         String     @db.VarChar(100)
+  name        String     @db.VarChar(150)
+  description String?    @db.Text
+  isDefault   Boolean    @default(false) @map("is_default")
+  status      RoleStatus @default(ACTIVE)
+  createdAt   DateTime   @default(now()) @map("created_at")
+  updatedAt   DateTime   @updatedAt @map("updated_at")
 
-  organization    Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  app             App              @relation(fields: [appId], references: [id], onDelete: Cascade)
-  creator         User?            @relation("RoleCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
-  rolePermissions RolePermission[]
-  memberAppRoles  MemberAppRole[]
+  app                App                 @relation(fields: [appId], references: [id], onDelete: Cascade)
+  appRolePermissions AppRolePermission[]
+  memberAppRoles     MemberAppRole[]
 
-  @@unique([organizationId, appId, name])
-  @@index([appId])
+  @@unique([appId, key])
+  @@unique([appId, name])
   @@index([status])
   @@index([isDefault])
-  @@index([createdBy])
-  @@map("roles")
+  @@map("app_roles")
 }
 
-model RolePermission {
-  id           BigInt   @id @default(autoincrement())
-  roleId       BigInt   @map("role_id")
-  permissionId BigInt   @map("permission_id")
-  createdBy    BigInt?  @map("created_by")
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+model AppRolePermission {
+  id              BigInt   @id @default(autoincrement())
+  appRoleId       BigInt   @map("app_role_id")
+  appPermissionId BigInt   @map("permission_id")
+  createdAt       DateTime @default(now()) @map("created_at")
 
-  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
-  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
-  creator    User?      @relation("RolePermissionCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  appRole       AppRole       @relation(fields: [appRoleId], references: [id], onDelete: Cascade)
+  appPermission AppPermission @relation(fields: [appPermissionId], references: [id], onDelete: Cascade)
 
-  @@unique([roleId, permissionId])
-  @@index([permissionId])
-  @@index([createdBy])
-  @@map("role_permissions")
+  @@unique([appRoleId, appPermissionId])
+  @@index([appPermissionId])
+  @@map("app_role_permissions")
 }
 
 model MemberAppRole {
   id                   BigInt              @id @default(autoincrement())
   organizationMemberId BigInt              @map("organization_member_id")
   appId                BigInt              @map("app_id")
-  roleId               BigInt              @map("role_id")
+  appRoleId            BigInt              @map("app_role_id")
   status               MemberAppRoleStatus @default(ACTIVE)
   assignedBy           BigInt?             @map("assigned_by")
   assignedAt           DateTime            @default(now()) @map("assigned_at")
@@ -331,12 +328,12 @@ model MemberAppRole {
 
   organizationMember OrganizationMember @relation(fields: [organizationMemberId], references: [id], onDelete: Cascade)
   app                App                @relation(fields: [appId], references: [id], onDelete: Cascade)
-  role               Role               @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  appRole            AppRole            @relation(fields: [appRoleId], references: [id], onDelete: Restrict)
   assigner           User?              @relation("MemberAppRoleAssignedBy", fields: [assignedBy], references: [id], onDelete: SetNull)
 
   @@unique([organizationMemberId, appId])
   @@index([appId])
-  @@index([roleId])
+  @@index([appRoleId])
   @@index([status])
   @@index([assignedBy])
   @@map("member_app_roles")

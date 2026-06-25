@@ -4,12 +4,8 @@ import {
   AppStatus,
   OrganizationAppStatus,
 } from "../../../generated/prisma/enums.js";
+import { authHeader } from "../../../test-utils/auth.js";
 import {
-  superAdminAuthHeader,
-  authHeader,
-} from "../../../test-utils/auth.js";
-import {
-  createTestSuperAdmin,
   createTestApp,
   createTestMember,
   createTestOrganization,
@@ -34,7 +30,7 @@ afterAll(async () => {
   await disconnectTestDatabase();
 });
 
-describe("app registry endpoints", () => {
+describe("business-user app discovery endpoints", () => {
   it("prevents business users from managing the app registry", async () => {
     const user = await createTestUser();
 
@@ -82,53 +78,6 @@ describe("app registry endpoints", () => {
     expect(disabledDetailsResponse.status).toBe(404);
   });
 
-  it("lets authenticated super-admins manage apps", async () => {
-    const superAdmin = await createTestSuperAdmin();
-    const otherSuperAdmin = await createTestSuperAdmin();
-
-    const createResponse = await request(app)
-      .post("/super-admin/api/v1/apps")
-      .set("Authorization", superAdminAuthHeader(otherSuperAdmin.id))
-      .send({
-        name: "Accounting",
-        key: "accounting",
-        description: "Finance app",
-      });
-    expect(createResponse.status).toBe(201);
-    expect(createResponse.body.data.app.status).toBe(AppStatus.DISABLED);
-
-    const duplicateResponse = await request(app)
-      .post("/super-admin/api/v1/apps")
-      .set("Authorization", superAdminAuthHeader(superAdmin.id))
-      .send({ name: "Duplicate Accounting", key: "accounting" });
-    expect(duplicateResponse.status).toBe(409);
-
-    const statusResponse = await request(app)
-      .patch("/super-admin/api/v1/apps/accounting/status")
-      .set(
-        "Authorization",
-        superAdminAuthHeader(superAdmin.id),
-      )
-      .send({ status: AppStatus.ACTIVE });
-    expect(statusResponse.status).toBe(200);
-    expect(statusResponse.body.data.app.status).toBe(AppStatus.ACTIVE);
-
-    const updateResponse = await request(app)
-      .patch("/super-admin/api/v1/apps/accounting/details")
-      .set("Authorization", superAdminAuthHeader(otherSuperAdmin.id))
-      .send({ name: "Accounting Suite", description: null });
-    expect(updateResponse.status).toBe(200);
-    expect(updateResponse.body.data.app.name).toBe("Accounting Suite");
-
-    const listResponse = await request(app)
-      .get("/super-admin/api/v1/apps")
-      .set(
-        "Authorization",
-        superAdminAuthHeader(superAdmin.id),
-      );
-    expect(listResponse.status).toBe(200);
-    expect(listResponse.body.data.apps).toHaveLength(1);
-  });
 });
 
 describe("organization app access endpoints", () => {

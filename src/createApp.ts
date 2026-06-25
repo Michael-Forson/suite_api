@@ -15,6 +15,8 @@ import configRoutes from "./features/config/config.routes.js";
 import superAdminAuthRoutes from "./features/super-admin/authentication/super_admin_auth.routes.js";
 import superAdminAccountRoutes from "./features/super-admin/account/account.routes.js";
 import superAdminAppRoutes from "./features/super-admin/app/app.routes.js";
+import superAdminRbacRoutes from "./features/super-admin/rbac/rbac.routes.js";
+import appRoleRoutes from "./features/core/app-role/app_role.routes.js";
 import { generalLimiter } from "./middleware/common/rateLimiter.middleware.js";
 
 dotenv.config();
@@ -52,11 +54,13 @@ export function createApp() {
   app.use("/user/api/v1/organizations", organizationInvitationRoutes);
   app.use("/user/api/v1/organizations", organizationMemberRoutes);
   app.use("/user/api/v1/organizations", organizationAppsRouter);
+  app.use("/user/api/v1/organizations", appRoleRoutes);
   app.use("/user/api/v1/organizations", organizationRoutes);
   app.use("/user/api/v1/payments", paymentRoutes);
   app.use("/user/api/v1/notifications", notificationRoutes);
   app.use("/super-admin/api/v1/auth", superAdminAuthRoutes);
   app.use("/super-admin/api/v1/accounts", superAdminAccountRoutes);
+  app.use("/super-admin/api/v1/apps", superAdminRbacRoutes);
   app.use("/super-admin/api/v1/apps", superAdminAppRoutes);
 
   app.get("/payment/callback", (req, res) => {
