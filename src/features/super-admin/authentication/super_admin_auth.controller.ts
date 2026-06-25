@@ -5,31 +5,13 @@ import { SuperAdminAuthRequest } from "../../../middleware/super-admin/superAdmi
 import { prisma } from "../../../prisma.js";
 import { comparePassword } from "../../../utils/password.js";
 import {
-  generateAccessToken,
-  generateRefreshToken,
   verifyRefreshToken,
 } from "../../../utils/tokens.js";
-
-const SUPER_ADMIN_SELECT = {
-  id: true,
-  firstName: true,
-  lastName: true,
-  email: true,
-  status: true,
-  lastLoginAt: true,
-  createdAt: true,
-  updatedAt: true,
-} as const;
-
-export const serializeSuperAdmin = <T extends { id: bigint }>(superAdmin: T) => ({
-  ...superAdmin,
-  id: superAdmin.id.toString(),
-});
-
-const issueSuperAdminTokens = (superAdmin: { id: bigint }) => ({
-  accessToken: generateAccessToken(superAdmin.id, "super-admin"),
-  refreshToken: generateRefreshToken(superAdmin.id, "super-admin"),
-});
+import {
+  issueSuperAdminTokens,
+  serializeSuperAdmin,
+  SUPER_ADMIN_SELECT,
+} from "./super_admin_auth.helpers.js";
 
 export const loginSuperAdmin = asyncHandler(async (req, res) => {
   const email =
@@ -161,5 +143,3 @@ export const getSuperAdminProfile = asyncHandler(
     });
   },
 );
-
-export { SUPER_ADMIN_SELECT, issueSuperAdminTokens };

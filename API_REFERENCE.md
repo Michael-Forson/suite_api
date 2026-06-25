@@ -493,8 +493,9 @@ Notes:
 GET /user/api/v1/organizations/:organizationId
 ```
 
-Returns the organization, the current user's membership, and counts for members,
-apps, and roles. The user must belong to the organization.
+Returns the organization, the current user's membership, and counts for members
+and enabled apps. App roles are global app definitions rather than
+organization-owned records. The user must belong to the organization.
 
 ### List User Organizations
 
@@ -575,6 +576,36 @@ PATCH /super-admin/api/v1/apps/:key/status
 Authenticated super-admin accounts can manage apps. New apps default to
 `DISABLED`; app keys are unique and cannot be changed after registration.
 
+### Manage App Permissions
+
+```http
+GET   /super-admin/api/v1/apps/:appKey/permissions
+POST  /super-admin/api/v1/apps/:appKey/permissions
+PATCH /super-admin/api/v1/apps/:appKey/permissions/:permissionKey
+PATCH /super-admin/api/v1/apps/:appKey/permissions/:permissionKey/status
+```
+
+Permission creation accepts `key`, `label`, optional `description`, and optional
+`category`. Keys are normalized to lowercase and cannot be changed. Status is
+`ACTIVE` or `DISABLED`; disabled permissions stop granting access immediately.
+
+### Manage Standard App Roles
+
+```http
+GET   /super-admin/api/v1/apps/:appKey/roles
+POST  /super-admin/api/v1/apps/:appKey/roles
+PATCH /super-admin/api/v1/apps/:appKey/roles/:roleKey
+PUT   /super-admin/api/v1/apps/:appKey/roles/:roleKey/permissions
+PATCH /super-admin/api/v1/apps/:appKey/roles/:roleKey/default
+PATCH /super-admin/api/v1/apps/:appKey/roles/:roleKey/status
+```
+
+Role creation accepts `key`, `name`, optional `description`, and an optional
+`permissionKeys` array. Replacing permissions also uses `permissionKeys`. Role
+keys cannot be changed. Only active permissions may be assigned. Each app may
+have one default role, and that role must be replaced before it can be disabled.
+All changes affect organization access immediately.
+
 ## Organization App Access Endpoints
 
 Mounted at `/user/api/v1/organizations/:organizationId/apps`.
@@ -597,6 +628,29 @@ include records where both `organization_apps.status` and `apps.status` are
 
 App access is not enabled or disabled by organization owners through this API.
 Subscription/payment-controlled access will be added later.
+
+### Standard Roles and Member Assignments
+
+```http
+GET    /user/api/v1/organizations/:organizationId/apps/:appKey/roles
+PUT    /user/api/v1/organizations/:organizationId/apps/:appKey/members/:memberId/role
+DELETE /user/api/v1/organizations/:organizationId/apps/:appKey/members/:memberId/role
+GET    /user/api/v1/organizations/:organizationId/apps/:appKey/my-access
+```
+
+Owners and admins can list active standard roles and assign one role to an
+active regular member. The assignment body is `{ "roleKey": "staff" }`.
+Removing an assignment makes the member fall back to the app's active default
+role. Regular members cannot manage assignments.
+
+`my-access` returns the effective role, access source, active permission keys,
+and whether organization-role bypass applies. Organization owners and admins
+have all active app permissions. Regular members use an active explicit role,
+then the active default role; access is unavailable when neither exists.
+
+Application routes can enforce a permission using the reusable
+`requireAppPermission("permission.key")` middleware. It also requires active
+user, organization, membership, app, and organization-app access.
 
 ## Organization Member Endpoints
 

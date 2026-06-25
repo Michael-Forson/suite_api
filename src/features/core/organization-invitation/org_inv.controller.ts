@@ -8,72 +8,34 @@ import {
 } from "../../../generated/prisma/enums.js";
 import { AuthRequest } from "../../../middleware/users/auth.middleware.js";
 import { prisma } from "../../../prisma.js";
-import { parseId } from "../../../utils/parseId.js";
 import { isValidEmail } from "../../../utils/validators.js";
+import { isActiveAccount } from "../../../utils/account.utils.js";
 import {
   authenticatedUserId,
-  isActiveAccount,
-  normalizeOptionalString,
-  organizationIdFromParams,
-} from "../organization/org.helpers.js";
-import { requireMemberManager } from "../organization-member/org_mem.helpers.js";
+  idFromParams,
+} from "../../../utils/request.utils.js";
+import { normalizeOptionalString } from "../../../utils/validation.utils.js";
 import {
   buildInvitationAcceptUrl,
+  createUniqueInvitationToken,
+  ensureInvitationCanBeManaged,
   expireInvitationIfNeeded,
   findInvitationForOrganization,
-  generateInvitationToken,
+  invitationIdFromParams,
   invitationExpiresAt,
   INVITATION_SELECT,
   invitableOrganizationRoles,
   isInvitableOrganizationRole,
+  normalizeEmail,
   requireInvitationLink,
   sendOrganizationInvitationEmail,
   serializeInvitation,
+  tokenFromParams,
 } from "./org_inv.helpers.js";
 import {
   AcceptInvitationRequestBody,
   CreateStaffInvitationRequestBody,
 } from "./org_inv.types.js";
-
-const invitationIdFromParams = (id: string | string[] | undefined) =>
-  typeof id === "string" ? parseId(id) : null;
-
-const tokenFromParams = (token: string | string[] | undefined) =>
-  typeof token === "string" && token.trim() ? token.trim() : null;
-
-const normalizeEmail = (email: unknown) =>
-  typeof email === "string" ? email.trim().toLowerCase() : "";
-
-const createUniqueInvitationToken = async () => {
-  let token = generateInvitationToken();
-
-  while (await prisma.organizationInvitation.findUnique({ where: { token } })) {
-    token = generateInvitationToken();
-  }
-
-  return token;
-};
-
-const ensureInvitationCanBeManaged = async (
-  req: AuthRequest,
-  res: Response,
-) => {
-  const userId = authenticatedUserId(req, res);
-  if (!userId) return null;
-
-  const organizationId = organizationIdFromParams(req.params.organizationId);
-  if (!organizationId) {
-    res
-      .status(400)
-      .json({ success: false, message: "Invalid organization id" });
-    return null;
-  }
-
-  const actor = await requireMemberManager(organizationId, userId, res);
-  if (!actor) return null;
-
-  return { userId, organizationId, actor };
-};
 
 export const createStaffInvitation = asyncHandler(
   async (req: AuthRequest, res: Response) => {
@@ -281,7 +243,7 @@ export const sendInvitationEmail = asyncHandler(
 
 export const validateInvitationToken = asyncHandler(
   async (req: AuthRequest, res: Response) => {
-    const organizationId = organizationIdFromParams(req.params.organizationId);
+    const organizationId = idFromParams(req.params.organizationId);
     const token = tokenFromParams(req.params.token);
     if (!organizationId || !token) {
       res
@@ -342,7 +304,7 @@ export const acceptInvitation = asyncHandler(
     const userId = authenticatedUserId(req, res);
     if (!userId) return;
 
-    const organizationId = organizationIdFromParams(req.params.organizationId);
+    const organizationId = idFromParams(req.params.organizationId);
     if (!organizationId) {
       res
         .status(400)

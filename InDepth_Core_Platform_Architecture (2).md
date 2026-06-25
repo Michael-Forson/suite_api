@@ -138,9 +138,11 @@ This structure focuses only on the core platform. Subscriptions, payments, AI, a
 
 ---
 
-### 3.6 `permissions`
+### 3.6 `AppPermission` (`permissions` table)
 
 **Purpose:** Stores all possible actions that can be performed inside apps.
+The app-specific model name leaves room for a future organization-scoped
+permission model without introducing an ambiguous generic `Permission` type.
 
 | Field | Meaning |
 |---|---|
@@ -151,43 +153,41 @@ This structure focuses only on the core platform. Subscriptions, payments, AI, a
 | `description` | What the permission allows. |
 | `category` | UI grouping such as Sales, Stock, Reports, or Settings. |
 | `is_system_permission` | Shows whether this is a built-in platform permission. |
+| `status` | Permission status such as active or disabled. |
 | `created_at` | When the permission was created. |
 | `updated_at` | When the permission was last updated. |
 
 ---
 
-### 3.7 `roles`
+### 3.7 `AppRole` (`app_roles` table)
 
-**Purpose:** Stores roles for each organization and app.
+**Purpose:** Stores reusable standard roles for an app. Every organization uses
+the same role definitions for that app.
 
 | Field | Meaning |
 |---|---|
 | `id` | Primary identifier of the role. |
-| `organization_id` | The organization that owns this role. |
 | `app_id` | The app this role belongs to. |
+| `key` | Stable backend role key, such as `manager` or `staff`. |
 | `name` | Role name shown to business users. |
 | `description` | Short explanation of the role. |
-| `is_system_role` | Shows whether the role is a built-in template. |
 | `is_default` | Shows whether this role is assigned by default. |
 | `status` | Role status such as active or disabled. |
-| `created_by` | User who created the role. |
 | `created_at` | When the role was created. |
 | `updated_at` | When the role was last updated. |
 
 ---
 
-### 3.8 `role_permissions`
+### 3.8 `AppRolePermission` (`app_role_permissions` table)
 
-**Purpose:** Connects roles to the permissions they are allowed to perform.
+**Purpose:** Connects standard app roles to app permissions.
 
 | Field | Meaning |
 |---|---|
 | `id` | Primary identifier of the role permission record. |
-| `role_id` | The role receiving the permission. |
-| `permission_id` | The permission attached to the role. |
-| `created_by` | User who attached the permission to the role. |
+| `app_role_id` | The `AppRole` receiving the permission. |
+| `permission_id` | The `AppPermission` attached to the role. |
 | `created_at` | When the record was created. |
-| `updated_at` | When the record was last updated. |
 
 ---
 
@@ -200,7 +200,7 @@ This structure focuses only on the core platform. Subscriptions, payments, AI, a
 | `id` | Primary identifier of the member app role record. |
 | `organization_member_id` | The organization member receiving the app role. |
 | `app_id` | The app where the role applies. |
-| `role_id` | The role assigned to the member inside the app. |
+| `app_role_id` | `AppRole` assigned to the member inside the app. |
 | `status` | Assignment status such as active or disabled. |
 | `assigned_by` | User who assigned the role. |
 | `assigned_at` | When the role was assigned. |
@@ -239,15 +239,12 @@ This structure focuses only on the core platform. Subscriptions, payments, AI, a
 - `organization_apps.app_id` → `apps.id`
 - `organization_apps.enabled_by` → `users.id`
 - `permissions.app_id` → `apps.id`
-- `roles.organization_id` → `organizations.id`
-- `roles.app_id` → `apps.id`
-- `roles.created_by` → `users.id`
-- `role_permissions.role_id` → `roles.id`
-- `role_permissions.permission_id` → `permissions.id`
-- `role_permissions.created_by` → `users.id`
+- `app_roles.app_id` → `apps.id`
+- `app_role_permissions.app_role_id` → `app_roles.id`
+- `app_role_permissions.permission_id` → `permissions.id`
 - `member_app_roles.organization_member_id` → `organization_members.id`
 - `member_app_roles.app_id` → `apps.id`
-- `member_app_roles.role_id` → `roles.id`
+- `member_app_roles.app_role_id` → `app_roles.id`
 - `member_app_roles.assigned_by` → `users.id`
 - `organization_invitations.organization_id` → `organizations.id`
 - `organization_invitations.invited_by` → `users.id`
@@ -262,8 +259,9 @@ This structure focuses only on the core platform. Subscriptions, payments, AI, a
 - `organization_members` should be unique by `organization_id + user_id`.
 - `organization_apps` should be unique by `organization_id + app_id`.
 - `permissions` should be unique by `app_id + key`.
-- `roles` should be unique by `organization_id + app_id + name`.
-- `role_permissions` should be unique by `role_id + permission_id`.
+- `app_roles` should be unique by `app_id + key` and `app_id + name`.
+- Each app should have at most one default active role.
+- `app_role_permissions` should be unique by `app_role_id + permission_id`.
 - `member_app_roles` should be unique by `organization_member_id + app_id`.
 
 ---
@@ -345,10 +343,10 @@ This section lists the main backend functions/actions that should exist under ea
 
 ### 7.7 Role Functions
 
-- Create app role for organization.
+- Create a reusable role for an app.
 - Update role name and description.
-- List roles by organization and app.
-- Create default role templates for each app.
+- List roles by app.
+- Select the default role for each app.
 - Disable role.
 - Mark role as default.
 - Prevent deletion of roles currently assigned to members.

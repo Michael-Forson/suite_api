@@ -8,50 +8,29 @@ import {
 import { AuthRequest } from "../../../middleware/users/auth.middleware.js";
 import { prisma } from "../../../prisma.js";
 import {
+  CREATE_OPTIONAL_STRING_FIELDS,
   ensureUniqueSlug,
-  isActiveAccount,
-  isOptionalStringValue,
-  isUniqueConstraintError,
   isValidOrganizationStatus,
-  normalizeOptionalString,
+  MAX_CREATE_SLUG_ATTEMPTS,
   ORGANIZATION_PROFILE_FIELDS,
   ORGANIZATION_SELECT,
   serializeOrganization,
   slugify,
   validateContactFields,
+  validateOptionalStringFields,
   validOrganizationStatuses,
 } from "./org.helpers.js";
+import { isActiveAccount } from "../../../utils/account.utils.js";
+import { isUniqueConstraintError } from "../../../utils/prisma.utils.js";
+import {
+  normalizeOptionalString,
+} from "../../../utils/validation.utils.js";
 import { OrganizationAccessRequest } from "./org.middleware.js";
 import {
   ChangeOrganizationStatusRequestBody,
   CreateOrganizationRequestBody,
   UpdateOrganizationProfileRequestBody,
 } from "./org.types.js";
-
-const CREATE_OPTIONAL_STRING_FIELDS = [
-  "slug",
-  ...ORGANIZATION_PROFILE_FIELDS,
-] as const;
-
-const MAX_CREATE_SLUG_ATTEMPTS = 3;
-
-const validateOptionalStringFields = (
-  body: Record<string, unknown>,
-  fields: readonly string[],
-  res: Response,
-) => {
-  for (const field of fields) {
-    if (field in body && !isOptionalStringValue(body[field])) {
-      res.status(400).json({
-        success: false,
-        message: `${field} must be a string or null`,
-      });
-      return false;
-    }
-  }
-
-  return true;
-};
 
 export const createOrganization = asyncHandler(
   async (req: AuthRequest, res: Response) => {
@@ -389,7 +368,6 @@ export const getOrganizationDetails = asyncHandler(
           select: {
             members: true,
             apps: true,
-            roles: true,
           },
         },
       },
@@ -461,7 +439,6 @@ export const listUserOrganizations = asyncHandler(
           select: {
             members: true,
             apps: true,
-            roles: true,
           },
         },
       },

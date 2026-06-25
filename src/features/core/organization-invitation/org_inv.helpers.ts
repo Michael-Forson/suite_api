@@ -5,8 +5,15 @@ import {
   InvitationStatus,
   OrganizationRole,
 } from "../../../generated/prisma/enums.js";
+import { AuthRequest } from "../../../middleware/users/auth.middleware.js";
 import { prisma } from "../../../prisma.js";
 import { sendTemplateEmail } from "../../../utils/emails/email.service.js";
+import { parseId } from "../../../utils/parseId.js";
+import {
+  authenticatedUserId,
+  idFromParams,
+} from "../../../utils/request.utils.js";
+import { requireMemberManager } from "../organization-member/org_mem.helpers.js";
 
 export const INVITATION_SELECT = {
   id: true,
@@ -43,6 +50,48 @@ const INVITABLE_ROLES: OrganizationRole[] = [
   OrganizationRole.ADMIN,
   OrganizationRole.MEMBER,
 ];
+
+export const invitationIdFromParams = (
+  id: string | string[] | undefined,
+) => (typeof id === "string" ? parseId(id) : null);
+
+export const tokenFromParams = (
+  token: string | string[] | undefined,
+) => (typeof token === "string" && token.trim() ? token.trim() : null);
+
+export const normalizeEmail = (email: unknown) =>
+  typeof email === "string" ? email.trim().toLowerCase() : "";
+
+export const createUniqueInvitationToken = async () => {
+  let token = generateInvitationToken();
+
+  while (await prisma.organizationInvitation.findUnique({ where: { token } })) {
+    token = generateInvitationToken();
+  }
+
+  return token;
+};
+
+export const ensureInvitationCanBeManaged = async (
+  req: AuthRequest,
+  res: Response,
+) => {
+  const userId = authenticatedUserId(req, res);
+  if (!userId) return null;
+
+  const organizationId = idFromParams(req.params.organizationId);
+  if (!organizationId) {
+    res
+      .status(400)
+      .json({ success: false, message: "Invalid organization id" });
+    return null;
+  }
+
+  const actor = await requireMemberManager(organizationId, userId, res);
+  if (!actor) return null;
+
+  return { userId, organizationId, actor };
+};
 const INVITATION_EXPIRY_DAYS = 7;
 
 export const isInvitableOrganizationRole = (
