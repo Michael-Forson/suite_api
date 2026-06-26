@@ -12,6 +12,7 @@ import { idFromParams } from "../../../utils/request.utils.js";
 
 export interface OrganizationAccessContext {
   organizationId: bigint;
+  organizationMemberId: bigint | null;
   ownerId: bigint;
   userId: bigint;
   organizationRole: OrganizationRole;
@@ -26,7 +27,60 @@ export interface OrganizationAccessRequest extends AuthRequest {
 const organizationIdFromRequest = (req: AuthRequest) =>
   idFromParams(req.params.organizationId);
 
-const resolveOrganizationAccess = async (
+const resolveOrganizationAccessFromClaims = (
+  req: AuthRequest,
+  res: Response,
+  organizationId: bigint,
+  userId: bigint,
+  options: { allowInactiveOrganization?: boolean },
+): OrganizationAccessContext | null | undefined => {
+  if (!req.orgAccessClaims) return undefined;
+
+  const organizationIdString = organizationId.toString();
+  const claim = req.orgAccessClaims.find(
+    (org) => org.organizationId === organizationIdString,
+  );
+  if (!claim) {
+    res.status(403).json({
+      success: false,
+      message: "You do not have access to this organization.",
+    });
+    return null;
+  }
+
+  if (
+    !options.allowInactiveOrganization &&
+    claim.organizationStatus !== AccountStatus.ACTIVE
+  ) {
+    res.status(403).json({
+      success: false,
+      message: "This organization is not active.",
+    });
+    return null;
+  }
+
+  if (claim.memberStatus !== MemberStatus.ACTIVE) {
+    res.status(403).json({
+      success: false,
+      message: "You do not have access to this organization.",
+    });
+    return null;
+  }
+
+  return {
+    organizationId,
+    organizationMemberId: claim.organizationMemberId
+      ? BigInt(claim.organizationMemberId)
+      : null,
+    ownerId: BigInt(claim.ownerId),
+    userId,
+    organizationRole: claim.organizationRole,
+    status: claim.memberStatus,
+    organizationStatus: claim.organizationStatus,
+  };
+};
+
+export const resolveOrganizationAccess = async (
   req: AuthRequest,
   res: Response,
   options: { allowInactiveOrganization?: boolean } = {},
@@ -40,6 +94,24 @@ const resolveOrganizationAccess = async (
   }
 
   const userId = BigInt(req.userId);
+  const organizationId = organizationIdFromRequest(req);
+  if (!organizationId) {
+    res.status(400).json({
+      success: false,
+      message: "Invalid organization id",
+    });
+    return null;
+  }
+
+  const accessFromClaims = resolveOrganizationAccessFromClaims(
+    req,
+    res,
+    organizationId,
+    userId,
+    options,
+  );
+  if (accessFromClaims !== undefined) return accessFromClaims;
+
   const user = await prisma.user.findUnique({
     where: { id: userId },
     select: { id: true, isActive: true, status: true },
@@ -53,18 +125,22 @@ const resolveOrganizationAccess = async (
     return null;
   }
 
-  const organizationId = organizationIdFromRequest(req);
-  if (!organizationId) {
-    res.status(400).json({
-      success: false,
-      message: "Invalid organization id",
-    });
-    return null;
-  }
-
   const organization = await prisma.organization.findUnique({
     where: { id: organizationId },
-    select: { id: true, ownerId: true, status: true },
+    select: {
+      id: true,
+      ownerId: true,
+      status: true,
+      members: {
+        where: { userId },
+        take: 1,
+        select: {
+          id: true,
+          organizationRole: true,
+          status: true,
+        },
+      },
+    },
   });
 
   if (!organization) {
@@ -93,8 +169,10 @@ const resolveOrganizationAccess = async (
   if (organization.ownerId === userId) {
     if (forbidInactiveOrganization()) return null;
 
+    const membership = organization.members[0] ?? null;
     return {
       organizationId,
+      organizationMemberId: membership?.id ?? null,
       ownerId: organization.ownerId,
       userId,
       organizationRole: OrganizationRole.OWNER,
@@ -103,18 +181,7 @@ const resolveOrganizationAccess = async (
     };
   }
 
-  const membership = await prisma.organizationMember.findUnique({
-    where: {
-      organizationId_userId: {
-        organizationId,
-        userId,
-      },
-    },
-    select: {
-      organizationRole: true,
-      status: true,
-    },
-  });
+  const membership = organization.members[0] ?? null;
 
   if (!membership || membership.status !== MemberStatus.ACTIVE) {
     res.status(403).json({
@@ -128,6 +195,7 @@ const resolveOrganizationAccess = async (
 
   return {
     organizationId,
+    organizationMemberId: membership.id,
     ownerId: organization.ownerId,
     userId,
     organizationRole: membership.organizationRole,

@@ -1,13 +1,12 @@
 import {
-  AccountStatus,
   AppStatus,
   MemberAppRoleStatus,
-  MemberStatus,
   OrganizationAppStatus,
   OrganizationRole,
   AppPermissionStatus,
   RoleStatus,
 } from "../../../generated/prisma/enums.js";
+import type { OrganizationAccessContext } from "../organization/org.middleware.js";
 import { prisma } from "../../../prisma.js";
 
 export type AppAccessSource =
@@ -66,151 +65,41 @@ const activePermissionKeys = (
     .sort();
 
 export const resolveEffectiveAppAccess = async ({
-  organizationId,
+  organizationAccess,
   appKey,
-  userId,
 }: {
-  organizationId: bigint;
+  organizationAccess: OrganizationAccessContext;
   appKey: string;
-  userId: bigint;
 }): Promise<AppAccessResult> => {
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { id: true, isActive: true, status: true },
-  });
-  if (
-    !user ||
-    !user.isActive ||
-    user.status !== AccountStatus.ACTIVE
-  ) {
-    return {
-      ok: false,
-      error: { status: 403, message: "Your account is not active." },
-    };
-  }
-
-  const organization = await prisma.organization.findUnique({
-    where: { id: organizationId },
-    select: { id: true, ownerId: true, status: true },
-  });
-  if (!organization) {
-    return {
-      ok: false,
-      error: { status: 404, message: "Organization not found" },
-    };
-  }
-  if (organization.status !== AccountStatus.ACTIVE) {
-    return {
-      ok: false,
-      error: { status: 403, message: "This organization is not active." },
-    };
-  }
+  const {
+    organizationId,
+    organizationMemberId,
+    userId,
+    organizationRole,
+  } = organizationAccess;
+  const lookupOrganizationMemberId = organizationMemberId ?? BigInt(0);
 
   const app = await prisma.app.findUnique({
     where: { key: appKey },
-    select: { id: true, key: true, status: true },
-  });
-  if (!app || app.status !== AppStatus.ACTIVE) {
-    return {
-      ok: false,
-      error: { status: 404, message: "Active app not found" },
-    };
-  }
-
-  const organizationApp = await prisma.organizationApp.findUnique({
-    where: {
-      organizationId_appId: {
-        organizationId,
-        appId: app.id,
+    select: {
+      id: true,
+      key: true,
+      status: true,
+      organizationApps: {
+        where: { organizationId },
+        take: 1,
+        select: { status: true },
       },
-    },
-    select: { status: true },
-  });
-  if (
-    !organizationApp ||
-    organizationApp.status !== OrganizationAppStatus.ACTIVE
-  ) {
-    return {
-      ok: false,
-      error: {
-        status: 403,
-        message: "This organization does not have active access to the app.",
+      appPermissions: {
+        where: { status: AppPermissionStatus.ACTIVE },
+        orderBy: { key: "asc" },
+        select: { key: true },
       },
-    };
-  }
-
-  let organizationRole: OrganizationRole = OrganizationRole.OWNER;
-  let organizationMemberId: bigint | null = null;
-
-  if (organization.ownerId !== userId) {
-    const membership = await prisma.organizationMember.findUnique({
-      where: {
-        organizationId_userId: {
-          organizationId,
-          userId,
-        },
-      },
-      select: { id: true, organizationRole: true, status: true },
-    });
-    if (!membership || membership.status !== MemberStatus.ACTIVE) {
-      return {
-        ok: false,
-        error: {
-          status: 403,
-          message: "You do not have active access to this organization.",
-        },
-      };
-    }
-    organizationRole = membership.organizationRole;
-    organizationMemberId = membership.id;
-  } else {
-    const ownerMembership = await prisma.organizationMember.findUnique({
-      where: {
-        organizationId_userId: {
-          organizationId,
-          userId,
-        },
-      },
-      select: { id: true },
-    });
-    organizationMemberId = ownerMembership?.id ?? null;
-  }
-
-  if (
-    organizationRole === OrganizationRole.OWNER ||
-    organizationRole === OrganizationRole.ADMIN
-  ) {
-    const permissions = await prisma.appPermission.findMany({
-      where: { appId: app.id, status: AppPermissionStatus.ACTIVE },
-      orderBy: { key: "asc" },
-      select: { key: true },
-    });
-    return {
-      ok: true,
-      access: {
-        organizationId,
-        organizationMemberId,
-        userId,
-        organizationRole,
-        appId: app.id,
-        appKey: app.key,
-        role: null,
-        source: "ORGANIZATION_ROLE",
-        permissions: permissions.map(({ key }) => key),
-        hasAccess: true,
-        bypass: true,
-      },
-    };
-  }
-
-  const explicitAssignment = organizationMemberId
-    ? await prisma.memberAppRole.findUnique({
+      memberAppRoles: {
         where: {
-          organizationMemberId_appId: {
-            organizationMemberId,
-            appId: app.id,
-          },
+          organizationMemberId: lookupOrganizationMemberId,
         },
+        take: 1,
         select: {
           status: true,
           appRole: {
@@ -231,8 +120,73 @@ export const resolveEffectiveAppAccess = async ({
             },
           },
         },
-      })
-    : null;
+      },
+      appRoles: {
+        where: {
+          isDefault: true,
+          status: RoleStatus.ACTIVE,
+        },
+        take: 1,
+        select: {
+          id: true,
+          key: true,
+          name: true,
+          isDefault: true,
+          appRolePermissions: {
+            select: {
+              appPermission: {
+                select: { appId: true, key: true, status: true },
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+  if (!app || app.status !== AppStatus.ACTIVE) {
+    return {
+      ok: false,
+      error: { status: 404, message: "Active app not found" },
+    };
+  }
+
+  const organizationApp = app.organizationApps[0] ?? null;
+  if (
+    !organizationApp ||
+    organizationApp.status !== OrganizationAppStatus.ACTIVE
+  ) {
+    return {
+      ok: false,
+      error: {
+        status: 403,
+        message: "This organization does not have active access to the app.",
+      },
+    };
+  }
+
+  if (
+    organizationRole === OrganizationRole.OWNER ||
+    organizationRole === OrganizationRole.ADMIN
+  ) {
+    return {
+      ok: true,
+      access: {
+        organizationId,
+        organizationMemberId,
+        userId,
+        organizationRole,
+        appId: app.id,
+        appKey: app.key,
+        role: null,
+        source: "ORGANIZATION_ROLE",
+        permissions: app.appPermissions.map(({ key }) => key),
+        hasAccess: true,
+        bypass: true,
+      },
+    };
+  }
+
+  const explicitAssignment = app.memberAppRoles[0] ?? null;
 
   if (
     explicitAssignment?.status === MemberAppRoleStatus.ACTIVE &&
@@ -263,26 +217,7 @@ export const resolveEffectiveAppAccess = async ({
     };
   }
 
-  const defaultRole = await prisma.appRole.findFirst({
-    where: {
-      appId: app.id,
-      isDefault: true,
-      status: RoleStatus.ACTIVE,
-    },
-    select: {
-      id: true,
-      key: true,
-      name: true,
-      isDefault: true,
-      appRolePermissions: {
-        select: {
-          appPermission: {
-            select: { appId: true, key: true, status: true },
-          },
-        },
-      },
-    },
-  });
+  const defaultRole = app.appRoles[0] ?? null;
   if (defaultRole) {
     return {
       ok: true,
