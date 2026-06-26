@@ -18,6 +18,7 @@ import {
   serializeEffectiveAppAccess,
 } from "./app_access.service.js";
 import {
+  AppAccessRequest,
   requireRoleManager,
   resolveRequestAccess,
 } from "./app_role.helpers.js";
@@ -205,11 +206,13 @@ export const removeMemberAppRole = asyncHandler(async (req, res) => {
   });
 });
 
-export const getMyAppAccess = asyncHandler(async (req, res) => {
-  const access = await resolveRequestAccess(req, res);
-  if (!access) return;
-  res.status(200).json({
-    success: true,
-    data: { access: serializeEffectiveAppAccess(access) },
-  });
-});
+export const getMyAppAccess = asyncHandler(
+  async (req: AppAccessRequest, res) => {
+    const access = req.appAccess ?? (await resolveRequestAccess(req, res));
+    if (!access) return;
+    res.status(200).json({
+      success: true,
+      data: { access: serializeEffectiveAppAccess(access) },
+    });
+  },
+);

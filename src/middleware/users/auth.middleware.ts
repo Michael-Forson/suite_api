@@ -1,9 +1,18 @@
 import { Request, Response, NextFunction } from "express";
-import { verifyAccessToken } from "../../utils/tokens.js";
+import {
+  UserOrgAccessClaim,
+  verifyAccessToken,
+} from "../../utils/tokens.js";
 
 export interface AuthRequest extends Request {
   userId?: string;
+  orgAccessClaims?: UserOrgAccessClaim[];
 }
+
+const claimsFromDecodedToken = (decoded: { orgs?: unknown }) =>
+  Array.isArray(decoded.orgs)
+    ? (decoded.orgs as UserOrgAccessClaim[])
+    : undefined;
 
 /**
  * Optional authentication - sets req.userId if a valid token is present,
@@ -22,9 +31,11 @@ export const optionalAuthenticate = async (
       const decoded = verifyAccessToken(token, "user") as {
         id: string;
         type?: string;
+        orgs?: unknown;
       };
       if (decoded.type === "user") {
         req.userId = decoded.id;
+        req.orgAccessClaims = claimsFromDecodedToken(decoded);
       }
     } catch {
       // Token invalid/expired — proceed without userId
@@ -55,6 +66,7 @@ export const authenticate = async (
     const decoded = verifyAccessToken(token, "user") as {
       id: string;
       type?: string;
+      orgs?: unknown;
     };
 
     if (decoded.type !== "user") {
@@ -68,6 +80,7 @@ export const authenticate = async (
     const userId = decoded.id;
 
     req.userId = userId;
+    req.orgAccessClaims = claimsFromDecodedToken(decoded);
     next();
   } catch (error: any) {
     // Differentiate between expected token expiration vs actual errors

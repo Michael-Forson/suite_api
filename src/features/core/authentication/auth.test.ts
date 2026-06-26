@@ -3,7 +3,10 @@ import request from "supertest";
 import { AuthProvider, Gender } from "../../../generated/prisma/enums.js";
 import { prisma } from "../../../prisma.js";
 import { authHeader } from "../../../test-utils/auth.js";
-import { createTestUser } from "../../../test-utils/factories.js";
+import {
+  createTestOrganization,
+  createTestUser,
+} from "../../../test-utils/factories.js";
 import { app, mockedSendTemplateEmail } from "../../../test-utils/testApp.js";
 import {
   assertTestDatabaseReady,
@@ -11,6 +14,10 @@ import {
   truncateTestDatabase,
 } from "../../../test-utils/testDb.js";
 import { hashPassword } from "../../../utils/password.js";
+import {
+  UserOrgAccessClaim,
+  verifyAccessToken,
+} from "../../../utils/tokens.js";
 
 await assertTestDatabaseReady();
 
@@ -118,6 +125,48 @@ describe("authentication endpoints", () => {
     expect(response.status).toBe(200);
     expect(response.body.data.tokens.accessToken).toEqual(expect.any(String));
     expect(response.body.data.tokens.refreshToken).toEqual(expect.any(String));
+  });
+
+  it("rebuilds organization access claims when refreshing tokens", async () => {
+    const password = "password123";
+    const user = await createTestUser({
+      email: "refresh-orgs@example.test",
+      password: await hashPassword(password),
+    });
+
+    const loginResponse = await request(app)
+      .post("/user/api/v1/auth/login")
+      .send({ email: user.email, password });
+
+    const initialClaims = verifyAccessToken(
+      loginResponse.body.data.tokens.accessToken,
+      "user",
+    ) as { orgs?: UserOrgAccessClaim[] };
+    expect(initialClaims.orgs).toEqual([]);
+
+    const { organization, ownerMember } = await createTestOrganization(user);
+
+    const refreshResponse = await request(app)
+      .post("/user/api/v1/auth/refresh-token")
+      .send({
+        refreshToken: loginResponse.body.data.tokens.refreshToken,
+      });
+
+    expect(refreshResponse.status).toBe(200);
+    const refreshedClaims = verifyAccessToken(
+      refreshResponse.body.data.tokens.accessToken,
+      "user",
+    ) as { orgs?: UserOrgAccessClaim[] };
+
+    expect(refreshedClaims.orgs).toContainEqual(
+      expect.objectContaining({
+        organizationId: organization.id.toString(),
+        organizationMemberId: ownerMember.id.toString(),
+        organizationRole: "OWNER",
+        organizationStatus: "ACTIVE",
+        memberStatus: "ACTIVE",
+      }),
+    );
   });
 
   it("returns and updates the authenticated user profile", async () => {

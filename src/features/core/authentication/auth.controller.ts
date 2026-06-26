@@ -7,10 +7,9 @@ import {
   Gender,
 } from "../../../generated/prisma/enums.js";
 import {
-  generateAccessToken,
-  generateRefreshToken,
   verifyRefreshToken,
 } from "../../../utils/tokens.js";
+import { issueUserTokens } from "./auth.helpers.js";
 import {
   AppleAuthRequestBody,
   GoogleAuthRequestBody,
@@ -282,8 +281,7 @@ export const loginUser = asyncHandler(async (req: Request, res: Response) => {
       return;
     }
 
-    const accessToken = generateAccessToken(user.id, "user");
-    const refreshToken = generateRefreshToken(user.id, "user");
+    const tokens = await issueUserTokens(user.id);
     const { password: _password, ...safeUser } = user;
 
     res.status(200).json({
@@ -291,7 +289,7 @@ export const loginUser = asyncHandler(async (req: Request, res: Response) => {
       message: "Login successful",
       data: {
         user: { ...safeUser, id: safeUser.id.toString() },
-        tokens: { accessToken, refreshToken },
+        tokens,
       },
     });
   } catch (error: any) {
@@ -831,15 +829,14 @@ export const verifyPhoneCode = asyncHandler(
 
         await resetVerificationAttempts(identifier, ipAddress);
 
-        const accessToken = generateAccessToken(mergedUser.id, "user");
-        const refreshToken = generateRefreshToken(mergedUser.id, "user");
+        const tokens = await issueUserTokens(mergedUser.id);
 
         res.status(201).json({
           success: true,
           message: "Phone verified and account linked successfully",
           data: {
             user: { ...mergedUser, id: mergedUser.id.toString() },
-            tokens: { accessToken, refreshToken },
+            tokens,
           },
         });
         return;
@@ -872,8 +869,7 @@ export const verifyPhoneCode = asyncHandler(
 
     await resetVerificationAttempts(identifier, ipAddress);
 
-    const accessToken = generateAccessToken(user.id, "user");
-    const refreshToken = generateRefreshToken(user.id, "user");
+    const tokens = await issueUserTokens(user.id);
 
     const userResponse = {
       ...user,
@@ -886,10 +882,7 @@ export const verifyPhoneCode = asyncHandler(
       message: "Phone number verified successfully",
       data: {
         user: userResponse,
-        tokens: {
-          accessToken,
-          refreshToken,
-        },
+        tokens,
       },
     });
   },
@@ -943,17 +936,13 @@ export const refreshToken = asyncHandler(
         return;
       }
 
-      const newAccessToken = generateAccessToken(user.id, "user");
-      const newRefreshToken = generateRefreshToken(user.id, "user");
+      const tokens = await issueUserTokens(user.id);
 
       res.status(200).json({
         success: true,
         message: "Token refreshed successfully",
         data: {
-          tokens: {
-            accessToken: newAccessToken,
-            refreshToken: newRefreshToken,
-          },
+          tokens,
         },
       });
     } catch (error: any) {
@@ -1281,8 +1270,7 @@ export const continueWithGoogle = asyncHandler(
         }
       }
 
-      const accessToken = generateAccessToken(user.id, "user");
-      const refreshToken = generateRefreshToken(user.id, "user");
+      const tokens = await issueUserTokens(user.id);
 
       const userResponse = {
         ...user,
@@ -1294,10 +1282,7 @@ export const continueWithGoogle = asyncHandler(
         message: "Google authentication successful",
         data: {
           user: userResponse,
-          tokens: {
-            accessToken,
-            refreshToken,
-          },
+          tokens,
         },
       });
     } catch (error: any) {
@@ -1395,8 +1380,7 @@ export const continueWithApple = asyncHandler(
         }
       }
 
-      const accessToken = generateAccessToken(user.id, "user");
-      const refreshToken = generateRefreshToken(user.id, "user");
+      const tokens = await issueUserTokens(user.id);
 
       const userResponse = {
         ...user,
@@ -1408,10 +1392,7 @@ export const continueWithApple = asyncHandler(
         message: "Apple authentication successful",
         data: {
           user: userResponse,
-          tokens: {
-            accessToken,
-            refreshToken,
-          },
+          tokens,
         },
       });
     } catch (error: any) {

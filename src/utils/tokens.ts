@@ -1,25 +1,47 @@
 import jwt from "jsonwebtoken";
+import {
+  AccountStatus,
+  MemberStatus,
+  OrganizationRole,
+} from "../generated/prisma/enums.js";
 
 export type TokenType = "user" | "super-admin";
+
+export interface UserOrgAccessClaim {
+  organizationId: string;
+  organizationMemberId: string | null;
+  ownerId: string;
+  organizationRole: OrganizationRole;
+  memberStatus: MemberStatus;
+  organizationStatus: AccountStatus;
+}
+
+export interface UserAccessTokenClaims {
+  orgs?: UserOrgAccessClaim[];
+}
 
 export const generateAccessToken = (
   id: bigint | string | number,
   type: TokenType,
+  claims: UserAccessTokenClaims = {},
 ) => {
   let secret: string | undefined;
+  let expiresIn: "10m" | "15m";
 
   if (type === "super-admin") {
     secret = process.env.SUPER_ADMIN_JWT_SECRET;
+    expiresIn = "15m";
   } else if (type === "user") {
     secret = process.env.JWT_SECRET;
+    expiresIn = "10m";
   } else {
     throw new Error("Invalid token type");
   }
 
   if (!secret) throw new Error("JWT access secret is not set");
 
-  return jwt.sign({ id: id.toString(), type }, secret, {
-    expiresIn: "15m",
+  return jwt.sign({ id: id.toString(), type, ...claims }, secret, {
+    expiresIn,
   });
 };
 
