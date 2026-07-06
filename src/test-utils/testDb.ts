@@ -2,6 +2,12 @@ import { prisma } from "../prisma.js";
 
 const TABLES = [
   "super_admins",
+  "subscription_checkout_sessions",
+  "organization_subscriptions",
+  "organization_billing_customers",
+  "subscription_plan_prices",
+  "subscription_plan_apps",
+  "subscription_plans",
   "member_app_roles",
   "app_role_permissions",
   "app_roles",

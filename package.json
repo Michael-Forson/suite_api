@@ -17,6 +17,7 @@
     "test:db:migrate": "node scripts/setup-test-db.js",
     "test:db:push": "node scripts/setup-test-db.js",
     "seed": "tsx prisma/seed-super-admin.ts",
+    "seed:subscriptions": "tsx prisma/seed-subscriptions.ts",
     "seed:app-versions": "tsx prisma/seeds/run.ts app-versions",
     "seed:super-admin": "tsx prisma/seed-super-admin.ts",
     "seed:banners": "tsx prisma/seeds/run.ts banners"
