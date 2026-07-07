@@ -536,7 +536,10 @@ export const processStripeSubscriptionObject = async ({
     status: nextStatus,
     providerResponse: subscription as any,
   };
-  const currentPeriodEnd = dateFromStripeUnix(subscription.current_period_end);
+  const currentPeriodEnd = dateFromStripeUnix(
+    subscription.current_period_end ??
+      (subscription as any).items?.data?.[0]?.current_period_end,
+  );
   if (currentPeriodEnd) data.currentPeriodEnd = currentPeriodEnd;
 
   await prisma.organizationSubscription.update({

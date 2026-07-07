@@ -138,6 +138,7 @@ export const handleStripeWebhook = asyncHandler(
       case "checkout.session.completed":
         await processStripeCheckoutCompleted(event.data.object);
         break;
+      case "customer.subscription.created":
       case "customer.subscription.updated":
         await processStripeSubscriptionObject({
           subscription: event.data.object,
