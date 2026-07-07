@@ -2,6 +2,8 @@ import {
   SuperAdminStatus,
   AppStatus,
   AuthProvider,
+  BillingInterval,
+  BillingProvider,
   InvitationStatus,
   MemberStatus,
   OrganizationAppAccessType,
@@ -131,6 +133,59 @@ export async function createTestApp(overrides: Record<string, any> = {}) {
       name: "Test App",
       key: id,
       status: AppStatus.ACTIVE,
+      ...overrides,
+    },
+  });
+}
+
+export async function createTestSubscriptionPlan({
+  key = nextId("plan"),
+  name = "Test Plan",
+  includedAppIds = [],
+  ...overrides
+}: {
+  key?: string;
+  name?: string;
+  includedAppIds?: bigint[];
+  [key: string]: any;
+} = {}) {
+  return prisma.subscriptionPlan.create({
+    data: {
+      key,
+      name,
+      ...overrides,
+      includedApps: {
+        create: includedAppIds.map((appId) => ({ appId })),
+      },
+    },
+  });
+}
+
+export async function createTestSubscriptionPlanPrice({
+  planId,
+  provider = BillingProvider.STRIPE,
+  billingInterval = BillingInterval.MONTH,
+  currency = "USD",
+  providerPriceId = nextId("price"),
+  amount = 19,
+  ...overrides
+}: {
+  planId: bigint;
+  provider?: BillingProvider;
+  billingInterval?: BillingInterval;
+  currency?: string;
+  providerPriceId?: string;
+  amount?: number | null;
+  [key: string]: any;
+}) {
+  return prisma.subscriptionPlanPrice.create({
+    data: {
+      planId,
+      provider,
+      billingInterval,
+      currency,
+      providerPriceId,
+      amount,
       ...overrides,
     },
   });

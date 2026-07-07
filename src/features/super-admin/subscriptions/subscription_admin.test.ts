@@ -1,0 +1,328 @@
+/// <reference types="jest" />
+import { jest } from "@jest/globals";
+import request from "supertest";
+import {
+  AppStatus,
+  BillingInterval,
+  BillingProvider,
+} from "../../../generated/prisma/enums.js";
+import { prisma } from "../../../prisma.js";
+import { authHeader, superAdminAuthHeader } from "../../../test-utils/auth.js";
+import {
+  createTestApp,
+  createTestOrganization,
+  createTestSuperAdmin,
+  createTestSubscriptionPlan,
+  createTestSubscriptionPlanPrice,
+  createTestUser,
+} from "../../../test-utils/factories.js";
+import {
+  assertTestDatabaseReady,
+  disconnectTestDatabase,
+  truncateTestDatabase,
+} from "../../../test-utils/testDb.js";
+
+const mockedCreateCustomer = jest.fn<(input: any) => Promise<any>>();
+const mockedCreateCheckoutSession = jest.fn<(input: any) => Promise<any>>();
+const mockedVerifyWebhookSignature = jest.fn<
+  (payload: string, signature: string) => boolean
+>();
+const mockedParseWebhookEvent = jest.fn<(payload: any) => any>();
+
+(jest as any).unstable_mockModule(
+  "../../../services/stripe/stripe.service.js",
+  () => ({
+    stripeService: {
+      createCustomer: mockedCreateCustomer,
+      createCheckoutSession: mockedCreateCheckoutSession,
+      verifyWebhookSignature: mockedVerifyWebhookSignature,
+      parseWebhookEvent: mockedParseWebhookEvent,
+    },
+  }),
+);
+
+(jest as any).unstable_mockModule(
+  "../../../services/paystack/paystack.service.js",
+  () => ({
+    paystackService: {
+      initializeTransaction: jest.fn(),
+      verifyTransaction: jest.fn(),
+      verifyWebhookSignature: jest.fn(),
+      parseWebhookEvent: jest.fn(),
+      isSuccessfulPayment: jest.fn(),
+      isFailedPayment: jest.fn(),
+    },
+  }),
+);
+
+const { app } = await import("../../../test-utils/testApp.js");
+
+await assertTestDatabaseReady();
+
+beforeEach(async () => {
+  await truncateTestDatabase();
+  mockedCreateCustomer.mockReset();
+  mockedCreateCheckoutSession.mockReset();
+  mockedVerifyWebhookSignature.mockReset();
+  mockedParseWebhookEvent.mockReset();
+  mockedCreateCustomer.mockResolvedValue({ id: "cus_test" });
+  mockedCreateCheckoutSession.mockResolvedValue({
+    id: "cs_test",
+    url: "https://checkout.stripe.test/session",
+    customer: "cus_test",
+    subscription: null,
+    status: "open",
+  });
+});
+
+afterAll(async () => {
+  await disconnectTestDatabase();
+});
+
+describe("super-admin subscription plan management", () => {
+  it("requires super-admin authentication", async () => {
+    const user = await createTestUser();
+
+    const missingAuthResponse = await request(app)
+      .post("/super-admin/api/v1/subscriptions/plans")
+      .send({ key: "starter", name: "Starter" });
+    expect(missingAuthResponse.status).toBe(401);
+
+    const userTokenResponse = await request(app)
+      .post("/super-admin/api/v1/subscriptions/plans")
+      .set("Authorization", authHeader(user.id))
+      .send({ key: "starter", name: "Starter" });
+    expect(userTokenResponse.status).toBe(401);
+  });
+
+  it("creates, lists, gets, updates, and deactivates subscription plans", async () => {
+    const superAdmin = await createTestSuperAdmin();
+
+    const createResponse = await request(app)
+      .post("/super-admin/api/v1/subscriptions/plans")
+      .set("Authorization", superAdminAuthHeader(superAdmin.id))
+      .send({
+        key: "Starter",
+        name: "Starter",
+        description: "For small teams",
+        sortOrder: 10,
+      });
+    expect(createResponse.status).toBe(201);
+    expect(createResponse.body.data.plan).toMatchObject({
+      key: "starter",
+      name: "Starter",
+      description: "For small teams",
+      sortOrder: 10,
+      isActive: true,
+    });
+
+    const duplicateResponse = await request(app)
+      .post("/super-admin/api/v1/subscriptions/plans")
+      .set("Authorization", superAdminAuthHeader(superAdmin.id))
+      .send({ key: "starter", name: "Duplicate" });
+    expect(duplicateResponse.status).toBe(409);
+
+    const listResponse = await request(app)
+      .get("/super-admin/api/v1/subscriptions/plans")
+      .set("Authorization", superAdminAuthHeader(superAdmin.id));
+    expect(listResponse.status).toBe(200);
+    expect(listResponse.body.data.plans).toHaveLength(1);
+
+    const getResponse = await request(app)
+      .get("/super-admin/api/v1/subscriptions/plans/starter")
+      .set("Authorization", superAdminAuthHeader(superAdmin.id));
+    expect(getResponse.status).toBe(200);
+    expect(getResponse.body.data.plan.key).toBe("starter");
+
+    const updateResponse = await request(app)
+      .patch("/super-admin/api/v1/subscriptions/plans/starter/details")
+      .set("Authorization", superAdminAuthHeader(superAdmin.id))
+      .send({ name: "Starter Plan", description: null, sortOrder: 5 });
+    expect(updateResponse.status).toBe(200);
+    expect(updateResponse.body.data.plan).toMatchObject({
+      name: "Starter Plan",
+      description: null,
+      sortOrder: 5,
+    });
+
+    const statusResponse = await request(app)
+      .patch("/super-admin/api/v1/subscriptions/plans/starter/status")
+      .set("Authorization", superAdminAuthHeader(superAdmin.id))
+      .send({ isActive: false });
+    expect(statusResponse.status).toBe(200);
+    expect(statusResponse.body.data.plan.isActive).toBe(false);
+  });
+
+  it("adds and removes included apps idempotently", async () => {
+    const superAdmin = await createTestSuperAdmin();
+    await createTestSubscriptionPlan({ key: "starter", name: "Starter" });
+    await createTestApp({
+      key: "invoicing",
+      name: "Invoicing",
+      status: AppStatus.ACTIVE,
+    });
+
+    const firstAdd = await request(app)
+      .post("/super-admin/api/v1/subscriptions/plans/starter/apps")
+      .set("Authorization", superAdminAuthHeader(superAdmin.id))
+      .send({ appKey: "invoicing" });
+    expect(firstAdd.status).toBe(200);
+    expect(firstAdd.body.data.plan.includedApps.map((item: any) => item.key)).toEqual([
+      "invoicing",
+    ]);
+
+    const secondAdd = await request(app)
+      .post("/super-admin/api/v1/subscriptions/plans/starter/apps")
+      .set("Authorization", superAdminAuthHeader(superAdmin.id))
+      .send({ appKey: "invoicing" });
+    expect(secondAdd.status).toBe(200);
+    expect(secondAdd.body.data.plan.includedApps).toHaveLength(1);
+
+    const removeResponse = await request(app)
+      .delete("/super-admin/api/v1/subscriptions/plans/starter/apps/invoicing")
+      .set("Authorization", superAdminAuthHeader(superAdmin.id));
+    expect(removeResponse.status).toBe(200);
+    expect(removeResponse.body.data.plan.includedApps).toHaveLength(0);
+
+    const unknownAppResponse = await request(app)
+      .post("/super-admin/api/v1/subscriptions/plans/starter/apps")
+      .set("Authorization", superAdminAuthHeader(superAdmin.id))
+      .send({ appKey: "unknown" });
+    expect(unknownAppResponse.status).toBe(404);
+  });
+
+  it("upserts and deactivates Stripe plan prices", async () => {
+    const superAdmin = await createTestSuperAdmin();
+    await createTestSubscriptionPlan({ key: "starter", name: "Starter" });
+
+    const createPriceResponse = await request(app)
+      .put("/super-admin/api/v1/subscriptions/plans/starter/prices")
+      .set("Authorization", superAdminAuthHeader(superAdmin.id))
+      .send({
+        interval: "month",
+        providerPriceId: "price_starter_month",
+        amount: 29,
+        currency: "usd",
+      });
+    expect(createPriceResponse.status).toBe(200);
+    expect(createPriceResponse.body.data.plan.prices[0]).toMatchObject({
+      provider: BillingProvider.STRIPE,
+      billingInterval: BillingInterval.MONTH,
+      providerPriceId: "price_starter_month",
+      amount: 29,
+      currency: "USD",
+      isActive: true,
+    });
+
+    const updatePriceResponse = await request(app)
+      .put("/super-admin/api/v1/subscriptions/plans/starter/prices")
+      .set("Authorization", superAdminAuthHeader(superAdmin.id))
+      .send({
+        interval: "month",
+        providerPriceId: "price_starter_month_v2",
+        amount: 35,
+        currency: "USD",
+      });
+    expect(updatePriceResponse.status).toBe(200);
+    expect(updatePriceResponse.body.data.plan.prices[0]).toMatchObject({
+      providerPriceId: "price_starter_month_v2",
+      amount: 35,
+    });
+
+    const statusResponse = await request(app)
+      .patch("/super-admin/api/v1/subscriptions/plans/starter/prices/month/status")
+      .set("Authorization", superAdminAuthHeader(superAdmin.id))
+      .send({ isActive: false });
+    expect(statusResponse.status).toBe(200);
+    expect(statusResponse.body.data.plan.prices[0].isActive).toBe(false);
+  });
+
+  it("customer listing and checkout reflect admin-managed plans and prices", async () => {
+    const superAdmin = await createTestSuperAdmin();
+    const { organization, owner } = await createTestOrganization();
+    const invoicing = await createTestApp({
+      key: "invoicing",
+      name: "Invoicing",
+      status: AppStatus.ACTIVE,
+    });
+
+    await request(app)
+      .post("/super-admin/api/v1/subscriptions/plans")
+      .set("Authorization", superAdminAuthHeader(superAdmin.id))
+      .send({ key: "starter", name: "Starter", sortOrder: 10 });
+    await request(app)
+      .post("/super-admin/api/v1/subscriptions/plans/starter/apps")
+      .set("Authorization", superAdminAuthHeader(superAdmin.id))
+      .send({ appKey: invoicing.key });
+    await request(app)
+      .put("/super-admin/api/v1/subscriptions/plans/starter/prices")
+      .set("Authorization", superAdminAuthHeader(superAdmin.id))
+      .send({
+        interval: "month",
+        providerPriceId: "price_starter_month",
+        amount: 29,
+        currency: "USD",
+      });
+
+    const customerPlansResponse = await request(app)
+      .get(`/user/api/v1/organizations/${organization.id}/subscriptions/plans`)
+      .query({ interval: "month" })
+      .set("Authorization", authHeader(owner.id));
+    expect(customerPlansResponse.status).toBe(200);
+    expect(customerPlansResponse.body.data.plans[0]).toMatchObject({
+      key: "starter",
+      checkoutReady: true,
+      price: { providerPriceId: "price_starter_month" },
+    });
+
+    const checkoutResponse = await request(app)
+      .post(
+        `/user/api/v1/organizations/${organization.id}/subscriptions/checkout`,
+      )
+      .set("Authorization", authHeader(owner.id))
+      .send({ planKey: "starter", interval: "month" });
+    expect(checkoutResponse.status).toBe(200);
+    expect(mockedCreateCheckoutSession).toHaveBeenCalledWith(
+      expect.objectContaining({ priceId: "price_starter_month" }),
+    );
+  });
+
+  it("blocks customer checkout for inactive plans and inactive prices", async () => {
+    const { organization, owner } = await createTestOrganization();
+    const inactivePlan = await createTestSubscriptionPlan({
+      key: "starter",
+      name: "Starter",
+      isActive: false,
+    });
+    const activePlan = await createTestSubscriptionPlan({
+      key: "growth",
+      name: "Growth",
+    });
+    await createTestSubscriptionPlanPrice({
+      planId: inactivePlan.id,
+      providerPriceId: "price_starter_month",
+    });
+    await createTestSubscriptionPlanPrice({
+      planId: activePlan.id,
+      providerPriceId: "price_growth_month",
+      isActive: false,
+    });
+
+    const inactivePlanCheckout = await request(app)
+      .post(
+        `/user/api/v1/organizations/${organization.id}/subscriptions/checkout`,
+      )
+      .set("Authorization", authHeader(owner.id))
+      .send({ planKey: "starter", interval: "month" });
+    expect(inactivePlanCheckout.status).toBe(404);
+
+    const inactivePriceCheckout = await request(app)
+      .post(
+        `/user/api/v1/organizations/${organization.id}/subscriptions/checkout`,
+      )
+      .set("Authorization", authHeader(owner.id))
+      .send({ planKey: "growth", interval: "month" });
+    expect(inactivePriceCheckout.status).toBe(409);
+    expect(inactivePriceCheckout.body.code).toBe("PLAN_PRICE_NOT_CONFIGURED");
+  });
+});
