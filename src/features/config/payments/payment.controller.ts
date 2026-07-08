@@ -32,7 +32,7 @@ export const initializePayment = asyncHandler(
     }
 
     const user = await prisma.user.findUnique({
-      where: { id: BigInt(req.userId) },
+      where: { id: req.userId },
       select: { id: true, email: true },
     });
 

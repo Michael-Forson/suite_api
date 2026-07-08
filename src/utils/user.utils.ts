@@ -9,7 +9,7 @@ import { prisma } from "../prisma.js";
 export const checkUserAvailability = async (params: {
   email?: string;
   phone?: string;
-  excludeUserId?: bigint;
+  excludeUserId?: string;
 }) => {
   const { email, phone, excludeUserId } = params;
 

@@ -54,7 +54,7 @@ const deleteDeadTokens = async ({
   if (uniqueRemoved.length > 0) {
     await prisma.deviceToken.deleteMany({
       where: {
-        userId: BigInt(userId),
+        userId: userId,
         pushToken: { in: uniqueRemoved },
       },
     });
@@ -70,7 +70,7 @@ export const registerDeviceToken = async ({
 }: RegisterDeviceTokenParams) => {
   const existing = await prisma.deviceToken.findFirst({
     where: {
-      userId: BigInt(userId),
+      userId: userId,
       pushToken,
       platform,
     },
@@ -82,7 +82,7 @@ export const registerDeviceToken = async ({
 
   return prisma.deviceToken.create({
     data: {
-      userId: BigInt(userId),
+      userId: userId,
       pushToken,
       platform,
     },
@@ -97,7 +97,7 @@ export const sendNotification = async ({
 }: SendNotificationParams) => {
   const tokenRows = await prisma.deviceToken.findMany({
     where: {
-      userId: BigInt(userId),
+      userId: userId,
     },
     select: {
       pushToken: true,
@@ -174,7 +174,7 @@ export const sendNotification = async ({
 export const removeDeviceToken = async (userId: string, pushToken: string) => {
   return prisma.deviceToken.deleteMany({
     where: {
-      userId: BigInt(userId),
+      userId: userId,
       pushToken,
     },
   });
@@ -183,8 +183,8 @@ export const removeDeviceToken = async (userId: string, pushToken: string) => {
 export const markNotificationAsRead = async (id: string, userId: string) => {
   return prisma.notification.updateMany({
     where: {
-      id: BigInt(id),
-      userId: BigInt(userId),
+      id: id,
+      userId: userId,
     },
     data: {
       readAt: new Date(),
@@ -195,7 +195,7 @@ export const markNotificationAsRead = async (id: string, userId: string) => {
 export const markAllNotificationsAsRead = async (userId: string) => {
   return prisma.notification.updateMany({
     where: {
-      userId: BigInt(userId),
+      userId: userId,
       readAt: null,
     },
     data: {
@@ -216,7 +216,7 @@ export const createUserNotification = async (params: {
   // 1. Save to database
   const notification = await prisma.notification.create({
     data: {
-      userId: params.userId ? BigInt(params.userId) : null,
+      userId: params.userId,
       targetAudience,
       title: params.title,
       message: params.message,

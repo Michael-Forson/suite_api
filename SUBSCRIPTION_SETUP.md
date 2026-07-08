@@ -73,7 +73,6 @@ Content-Type: application/json
 
 ```json
 {
-  "key": "starter",
   "name": "Starter",
   "description": "For small teams",
   "sortOrder": 10,
@@ -81,20 +80,21 @@ Content-Type: application/json
 }
 ```
 
-Recommended MVP keys:
+Record the returned plan `id`; subsequent plan management and checkout calls use
+that UUID.
 
-- `starter`
-- `growth`
-- `business`
+Example plan ID used below:
 
-The plan key is permanent after creation.
+```text
+11111111-1111-4111-8111-111111111111
+```
 
 ## 5. Add Apps To Plans
 
 Attach included apps to each plan:
 
 ```http
-POST /super-admin/api/v1/subscriptions/plans/starter/apps
+POST /super-admin/api/v1/subscriptions/plans/11111111-1111-4111-8111-111111111111/apps
 Authorization: Bearer <superAdminToken>
 Content-Type: application/json
 ```
@@ -108,7 +108,7 @@ Content-Type: application/json
 Removing an app from a plan only removes the plan-app relationship:
 
 ```http
-DELETE /super-admin/api/v1/subscriptions/plans/starter/apps/invoicing
+DELETE /super-admin/api/v1/subscriptions/plans/11111111-1111-4111-8111-111111111111/apps/invoicing
 Authorization: Bearer <superAdminToken>
 ```
 
@@ -136,7 +136,7 @@ Example prices:
 Use the super-admin price endpoint:
 
 ```http
-PUT /super-admin/api/v1/subscriptions/plans/starter/prices
+PUT /super-admin/api/v1/subscriptions/plans/11111111-1111-4111-8111-111111111111/prices
 Authorization: Bearer <superAdminToken>
 Content-Type: application/json
 ```
@@ -166,7 +166,7 @@ For yearly pricing:
 Disable a price without deleting it:
 
 ```http
-PATCH /super-admin/api/v1/subscriptions/plans/starter/prices/month/status
+PATCH /super-admin/api/v1/subscriptions/plans/11111111-1111-4111-8111-111111111111/prices/month/status
 Authorization: Bearer <superAdminToken>
 Content-Type: application/json
 ```
@@ -201,7 +201,7 @@ Content-Type: application/json
 
 ```json
 {
-  "planKey": "starter",
+  "planId": "11111111-1111-4111-8111-111111111111",
   "interval": "month"
 }
 ```

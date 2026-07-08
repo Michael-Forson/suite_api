@@ -69,13 +69,13 @@ export const isValidOrganizationStatus = (
 
 export const serializeOrganization = <
   T extends {
-    id: bigint;
-    ownerId: bigint;
+    id: string;
+    ownerId: string;
     members?: Array<{
-      id: bigint;
-      organizationId: bigint;
-      userId: bigint;
-      invitedBy: bigint | null;
+      id: string;
+      organizationId: string;
+      userId: string;
+      invitedBy: string | null;
       organizationRole: string;
       jobTitle: string | null;
       status: string;

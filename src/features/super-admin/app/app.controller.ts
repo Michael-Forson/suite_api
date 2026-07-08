@@ -38,6 +38,17 @@ export const registerApp = asyncHandler(
       });
       return;
     }
+    const existingApp = await prisma.app.findUnique({
+      where: { key },
+      select: { id: true },
+    });
+    if (existingApp) {
+      res.status(409).json({
+        success: false,
+        message: "App key is already registered",
+      });
+      return;
+    }
 
     let app;
     try {

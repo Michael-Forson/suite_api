@@ -14,14 +14,14 @@ export const SUPER_ADMIN_SELECT = {
   updatedAt: true,
 } as const;
 
-export const serializeSuperAdmin = <T extends { id: bigint }>(
+export const serializeSuperAdmin = <T extends { id: string }>(
   superAdmin: T,
 ) => ({
   ...superAdmin,
   id: superAdmin.id.toString(),
 });
 
-export const issueSuperAdminTokens = (superAdmin: { id: bigint }) => ({
+export const issueSuperAdminTokens = (superAdmin: { id: string }) => ({
   accessToken: generateAccessToken(superAdmin.id, "super-admin"),
   refreshToken: generateRefreshToken(superAdmin.id, "super-admin"),
 });

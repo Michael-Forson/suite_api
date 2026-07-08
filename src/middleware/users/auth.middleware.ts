@@ -3,6 +3,7 @@ import {
   UserOrgAccessClaim,
   verifyAccessToken,
 } from "../../utils/tokens.js";
+import { parseId } from "../../utils/parseId.js";
 
 export interface AuthRequest extends Request {
   userId?: string;
@@ -33,8 +34,9 @@ export const optionalAuthenticate = async (
         type?: string;
         orgs?: unknown;
       };
-      if (decoded.type === "user") {
-        req.userId = decoded.id;
+      const userId = parseId(decoded.id);
+      if (decoded.type === "user" && userId) {
+        req.userId = userId;
         req.orgAccessClaims = claimsFromDecodedToken(decoded);
       }
     } catch {
@@ -77,7 +79,14 @@ export const authenticate = async (
       return;
     }
 
-    const userId = decoded.id;
+    const userId = parseId(decoded.id);
+    if (!userId) {
+      res.status(401).json({
+        success: false,
+        message: "Invalid token type for this resource.",
+      });
+      return;
+    }
 
     req.userId = userId;
     req.orgAccessClaims = claimsFromDecodedToken(decoded);

@@ -45,6 +45,7 @@ import {
   resetVerificationAttempts,
 } from "../../../utils/verificationAttempts.js";
 import { comparePassword, hashPassword } from "../../../utils/password.js";
+import { parseId } from "../../../utils/parseId.js";
 import {
   sendPasswordResetCode,
   validateAndConsumeResetCode,
@@ -726,7 +727,7 @@ export const verifyPhoneCode = asyncHandler(
       res.status(400).json({ success: false, message });
       return;
     }
-  const authenticatedUserId = req.userId ? BigInt(req.userId) : null;
+  const authenticatedUserId = req.userId ? req.userId : null;
     const isSocialMerge =
       authenticatedUserId &&
       authenticatedUserId !== user.id &&
@@ -914,7 +915,14 @@ export const refreshToken = asyncHandler(
         return;
       }
 
-      const userId = BigInt(decoded.id);
+      const userId = parseId(decoded.id);
+      if (!userId) {
+        res.status(401).json({
+          success: false,
+          message: "Invalid token. Please login again.",
+        });
+        return;
+      }
 
       const user = await prisma.user.findUnique({
         where: { id: userId },
@@ -967,7 +975,7 @@ export const getMe = asyncHandler(async (req: AuthRequest, res: Response) => {
   }
 
   const user = await prisma.user.findUnique({
-    where: { id: BigInt(userId) },
+    where: { id: userId },
     select: {
       id: true,
       firstName: true,
@@ -1001,7 +1009,7 @@ export const updateProfile = asyncHandler(
       res.status(401).json({ success: false, message: "Unauthorized" });
       return;
     }
-    const userBigId = BigInt(userId);
+    const userBigId = userId;
 
     const {
       firstName,
@@ -1166,7 +1174,7 @@ export const sendEmailCode = asyncHandler(
     try {
       const availability = await checkUserAvailability({
         email,
-        excludeUserId: BigInt(userId),
+        excludeUserId: userId,
       });
 
       if (!availability.available) {
@@ -1430,7 +1438,7 @@ export const verifyEmailCode = asyncHandler(
 
     const availability = await checkUserAvailability({
       email,
-      excludeUserId: BigInt(userId),
+      excludeUserId: userId,
     });
 
     if (!availability.available) {
@@ -1450,7 +1458,7 @@ export const verifyEmailCode = asyncHandler(
 
     try {
       await prisma.user.update({
-        where: { id: BigInt(userId) },
+        where: { id: userId },
         data: {
           email: email,
           emailVerifiedAt: new Date(),
@@ -1478,7 +1486,7 @@ export const deleteAccount = asyncHandler(
       res.status(401).json({ success: false, message: "Unauthorized" });
       return;
     }
-    const userBigId = BigInt(userId);
+    const userBigId = userId;
 
     try {
       await prisma.$transaction([

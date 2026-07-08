@@ -41,7 +41,7 @@ export const createOrganization = asyncHandler(
       });
       return;
     }
-    const userId = BigInt(req.userId);
+    const userId = req.userId;
 
     const body = req.body as CreateOrganizationRequestBody &
       Record<string, unknown>;
@@ -397,7 +397,7 @@ export const listUserOrganizations = asyncHandler(
       });
       return;
     }
-    const userId = BigInt(req.userId);
+    const userId = req.userId;
 
     const user = await prisma.user.findUnique({
       where: { id: userId },

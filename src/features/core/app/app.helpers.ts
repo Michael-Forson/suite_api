@@ -46,7 +46,7 @@ export const ORGANIZATION_APP_SELECT = {
 
 const serializeUserSummary = <
   T extends {
-    id: bigint;
+    id: string;
     firstName: string | null;
     lastName: string | null;
     email: string | null;
@@ -64,13 +64,13 @@ const serializeUserSummary = <
 
 export const serializeOrganizationApp = <
   T extends {
-    id: bigint;
-    organizationId: bigint;
-    appId: bigint;
-    enabledBy: bigint | null;
-    disabledBy: bigint | null;
+    id: string;
+    organizationId: string;
+    appId: string;
+    enabledBy: string | null;
+    disabledBy: string | null;
     app?: {
-      id: bigint;
+      id: string;
     };
     enabler?: Parameters<typeof serializeUserSummary>[0];
     disabler?: Parameters<typeof serializeUserSummary>[0];

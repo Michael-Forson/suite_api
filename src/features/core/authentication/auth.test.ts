@@ -21,6 +21,9 @@ import {
 
 await assertTestDatabaseReady();
 
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 beforeEach(async () => {
   mockedSendTemplateEmail.mockClear();
   await truncateTestDatabase();
@@ -31,7 +34,7 @@ afterAll(async () => {
 });
 
 describe("authentication endpoints", () => {
-  it("registers a user with email and serializes BigInt ids as strings", async () => {
+  it("registers a user with email and serializes UUID ids as strings", async () => {
     const response = await request(app)
       .post("/user/api/v1/auth/register")
       .send({
@@ -52,6 +55,7 @@ describe("authentication endpoints", () => {
       isActive: true,
     });
     expect(typeof response.body.data.id).toBe("string");
+    expect(response.body.data.id).toMatch(UUID_REGEX);
     expect(response.body.data.password).toBeUndefined();
   });
 
@@ -100,6 +104,7 @@ describe("authentication endpoints", () => {
 
     expect(response.status).toBe(200);
     expect(response.body.data.user.id).toBe(user.id.toString());
+    expect(response.body.data.user.id).toMatch(UUID_REGEX);
     expect(response.body.data.user.password).toBeUndefined();
     expect(response.body.data.tokens.accessToken).toEqual(expect.any(String));
     expect(response.body.data.tokens.refreshToken).toEqual(expect.any(String));
@@ -167,6 +172,8 @@ describe("authentication endpoints", () => {
         memberStatus: "ACTIVE",
       }),
     );
+    expect(refreshedClaims.orgs?.[0]?.organizationId).toMatch(UUID_REGEX);
+    expect(refreshedClaims.orgs?.[0]?.organizationMemberId).toMatch(UUID_REGEX);
   });
 
   it("returns and updates the authenticated user profile", async () => {

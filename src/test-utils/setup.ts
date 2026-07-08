@@ -1,4 +1,7 @@
-import "dotenv/config";
+import dotenv from "dotenv";
+
+process.env.DOTENV_CONFIG_QUIET = "true";
+dotenv.config({ quiet: true });
 
 const testDatabaseUrl = process.env.TESTDB_URL;
 

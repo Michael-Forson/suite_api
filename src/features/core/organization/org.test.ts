@@ -55,7 +55,7 @@ describe("organization endpoints", () => {
     const ownerMember = await prisma.organizationMember.findUnique({
       where: {
         organizationId_userId: {
-          organizationId: BigInt(firstResponse.body.data.organization.id),
+          organizationId: firstResponse.body.data.organization.id,
           userId: user.id,
         },
       },
@@ -177,6 +177,17 @@ describe("organization endpoints", () => {
       .set("Authorization", authHeader(outsider.id));
 
     expect(outsiderResponse.status).toBe(403);
+  });
+
+  it("rejects numeric organization route ids", async () => {
+    const user = await createTestUser();
+
+    const response = await request(app)
+      .get("/user/api/v1/organizations/123")
+      .set("Authorization", authHeader(user.id));
+
+    expect(response.status).toBe(400);
+    expect(response.body.message).toBe("Invalid organization id");
   });
 
   it("allows owners and admins to update profile, but blocks members", async () => {

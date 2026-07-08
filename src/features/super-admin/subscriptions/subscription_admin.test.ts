@@ -85,13 +85,13 @@ describe("super-admin subscription plan management", () => {
 
     const missingAuthResponse = await request(app)
       .post("/super-admin/api/v1/subscriptions/plans")
-      .send({ key: "starter", name: "Starter" });
+      .send({ name: "Starter" });
     expect(missingAuthResponse.status).toBe(401);
 
     const userTokenResponse = await request(app)
       .post("/super-admin/api/v1/subscriptions/plans")
       .set("Authorization", authHeader(user.id))
-      .send({ key: "starter", name: "Starter" });
+      .send({ name: "Starter" });
     expect(userTokenResponse.status).toBe(401);
   });
 
@@ -102,25 +102,18 @@ describe("super-admin subscription plan management", () => {
       .post("/super-admin/api/v1/subscriptions/plans")
       .set("Authorization", superAdminAuthHeader(superAdmin.id))
       .send({
-        key: "Starter",
         name: "Starter",
         description: "For small teams",
         sortOrder: 10,
       });
     expect(createResponse.status).toBe(201);
     expect(createResponse.body.data.plan).toMatchObject({
-      key: "starter",
       name: "Starter",
       description: "For small teams",
       sortOrder: 10,
       isActive: true,
     });
-
-    const duplicateResponse = await request(app)
-      .post("/super-admin/api/v1/subscriptions/plans")
-      .set("Authorization", superAdminAuthHeader(superAdmin.id))
-      .send({ key: "starter", name: "Duplicate" });
-    expect(duplicateResponse.status).toBe(409);
+    const planId = createResponse.body.data.plan.id;
 
     const listResponse = await request(app)
       .get("/super-admin/api/v1/subscriptions/plans")
@@ -129,13 +122,13 @@ describe("super-admin subscription plan management", () => {
     expect(listResponse.body.data.plans).toHaveLength(1);
 
     const getResponse = await request(app)
-      .get("/super-admin/api/v1/subscriptions/plans/starter")
+      .get(`/super-admin/api/v1/subscriptions/plans/${planId}`)
       .set("Authorization", superAdminAuthHeader(superAdmin.id));
     expect(getResponse.status).toBe(200);
-    expect(getResponse.body.data.plan.key).toBe("starter");
+    expect(getResponse.body.data.plan.id).toBe(planId);
 
     const updateResponse = await request(app)
-      .patch("/super-admin/api/v1/subscriptions/plans/starter/details")
+      .patch(`/super-admin/api/v1/subscriptions/plans/${planId}/details`)
       .set("Authorization", superAdminAuthHeader(superAdmin.id))
       .send({ name: "Starter Plan", description: null, sortOrder: 5 });
     expect(updateResponse.status).toBe(200);
@@ -146,7 +139,7 @@ describe("super-admin subscription plan management", () => {
     });
 
     const statusResponse = await request(app)
-      .patch("/super-admin/api/v1/subscriptions/plans/starter/status")
+      .patch(`/super-admin/api/v1/subscriptions/plans/${planId}/status`)
       .set("Authorization", superAdminAuthHeader(superAdmin.id))
       .send({ isActive: false });
     expect(statusResponse.status).toBe(200);
@@ -155,7 +148,7 @@ describe("super-admin subscription plan management", () => {
 
   it("adds and removes included apps idempotently", async () => {
     const superAdmin = await createTestSuperAdmin();
-    await createTestSubscriptionPlan({ key: "starter", name: "Starter" });
+    const plan = await createTestSubscriptionPlan({ name: "Starter" });
     await createTestApp({
       key: "invoicing",
       name: "Invoicing",
@@ -163,7 +156,7 @@ describe("super-admin subscription plan management", () => {
     });
 
     const firstAdd = await request(app)
-      .post("/super-admin/api/v1/subscriptions/plans/starter/apps")
+      .post(`/super-admin/api/v1/subscriptions/plans/${plan.id}/apps`)
       .set("Authorization", superAdminAuthHeader(superAdmin.id))
       .send({ appKey: "invoicing" });
     expect(firstAdd.status).toBe(200);
@@ -172,20 +165,20 @@ describe("super-admin subscription plan management", () => {
     ]);
 
     const secondAdd = await request(app)
-      .post("/super-admin/api/v1/subscriptions/plans/starter/apps")
+      .post(`/super-admin/api/v1/subscriptions/plans/${plan.id}/apps`)
       .set("Authorization", superAdminAuthHeader(superAdmin.id))
       .send({ appKey: "invoicing" });
     expect(secondAdd.status).toBe(200);
     expect(secondAdd.body.data.plan.includedApps).toHaveLength(1);
 
     const removeResponse = await request(app)
-      .delete("/super-admin/api/v1/subscriptions/plans/starter/apps/invoicing")
+      .delete(`/super-admin/api/v1/subscriptions/plans/${plan.id}/apps/invoicing`)
       .set("Authorization", superAdminAuthHeader(superAdmin.id));
     expect(removeResponse.status).toBe(200);
     expect(removeResponse.body.data.plan.includedApps).toHaveLength(0);
 
     const unknownAppResponse = await request(app)
-      .post("/super-admin/api/v1/subscriptions/plans/starter/apps")
+      .post(`/super-admin/api/v1/subscriptions/plans/${plan.id}/apps`)
       .set("Authorization", superAdminAuthHeader(superAdmin.id))
       .send({ appKey: "unknown" });
     expect(unknownAppResponse.status).toBe(404);
@@ -193,10 +186,10 @@ describe("super-admin subscription plan management", () => {
 
   it("upserts and deactivates Stripe plan prices", async () => {
     const superAdmin = await createTestSuperAdmin();
-    await createTestSubscriptionPlan({ key: "starter", name: "Starter" });
+    const plan = await createTestSubscriptionPlan({ name: "Starter" });
 
     const createPriceResponse = await request(app)
-      .put("/super-admin/api/v1/subscriptions/plans/starter/prices")
+      .put(`/super-admin/api/v1/subscriptions/plans/${plan.id}/prices`)
       .set("Authorization", superAdminAuthHeader(superAdmin.id))
       .send({
         interval: "month",
@@ -215,7 +208,7 @@ describe("super-admin subscription plan management", () => {
     });
 
     const updatePriceResponse = await request(app)
-      .put("/super-admin/api/v1/subscriptions/plans/starter/prices")
+      .put(`/super-admin/api/v1/subscriptions/plans/${plan.id}/prices`)
       .set("Authorization", superAdminAuthHeader(superAdmin.id))
       .send({
         interval: "month",
@@ -230,7 +223,7 @@ describe("super-admin subscription plan management", () => {
     });
 
     const statusResponse = await request(app)
-      .patch("/super-admin/api/v1/subscriptions/plans/starter/prices/month/status")
+      .patch(`/super-admin/api/v1/subscriptions/plans/${plan.id}/prices/month/status`)
       .set("Authorization", superAdminAuthHeader(superAdmin.id))
       .send({ isActive: false });
     expect(statusResponse.status).toBe(200);
@@ -249,13 +242,17 @@ describe("super-admin subscription plan management", () => {
     await request(app)
       .post("/super-admin/api/v1/subscriptions/plans")
       .set("Authorization", superAdminAuthHeader(superAdmin.id))
-      .send({ key: "starter", name: "Starter", sortOrder: 10 });
+      .send({ name: "Starter", sortOrder: 10 });
+    const starterPlan = await prisma.subscriptionPlan.findFirstOrThrow({
+      where: { name: "Starter" },
+      select: { id: true },
+    });
     await request(app)
-      .post("/super-admin/api/v1/subscriptions/plans/starter/apps")
+      .post(`/super-admin/api/v1/subscriptions/plans/${starterPlan.id}/apps`)
       .set("Authorization", superAdminAuthHeader(superAdmin.id))
       .send({ appKey: invoicing.key });
     await request(app)
-      .put("/super-admin/api/v1/subscriptions/plans/starter/prices")
+      .put(`/super-admin/api/v1/subscriptions/plans/${starterPlan.id}/prices`)
       .set("Authorization", superAdminAuthHeader(superAdmin.id))
       .send({
         interval: "month",
@@ -270,7 +267,8 @@ describe("super-admin subscription plan management", () => {
       .set("Authorization", authHeader(owner.id));
     expect(customerPlansResponse.status).toBe(200);
     expect(customerPlansResponse.body.data.plans[0]).toMatchObject({
-      key: "starter",
+      id: starterPlan.id,
+      name: "Starter",
       checkoutReady: true,
       price: { providerPriceId: "price_starter_month" },
     });
@@ -280,7 +278,7 @@ describe("super-admin subscription plan management", () => {
         `/user/api/v1/organizations/${organization.id}/subscriptions/checkout`,
       )
       .set("Authorization", authHeader(owner.id))
-      .send({ planKey: "starter", interval: "month" });
+      .send({ planId: starterPlan.id, interval: "month" });
     expect(checkoutResponse.status).toBe(200);
     expect(mockedCreateCheckoutSession).toHaveBeenCalledWith(
       expect.objectContaining({ priceId: "price_starter_month" }),
@@ -290,12 +288,10 @@ describe("super-admin subscription plan management", () => {
   it("blocks customer checkout for inactive plans and inactive prices", async () => {
     const { organization, owner } = await createTestOrganization();
     const inactivePlan = await createTestSubscriptionPlan({
-      key: "starter",
       name: "Starter",
       isActive: false,
     });
     const activePlan = await createTestSubscriptionPlan({
-      key: "growth",
       name: "Growth",
     });
     await createTestSubscriptionPlanPrice({
@@ -313,7 +309,7 @@ describe("super-admin subscription plan management", () => {
         `/user/api/v1/organizations/${organization.id}/subscriptions/checkout`,
       )
       .set("Authorization", authHeader(owner.id))
-      .send({ planKey: "starter", interval: "month" });
+      .send({ planId: inactivePlan.id, interval: "month" });
     expect(inactivePlanCheckout.status).toBe(404);
 
     const inactivePriceCheckout = await request(app)
@@ -321,7 +317,7 @@ describe("super-admin subscription plan management", () => {
         `/user/api/v1/organizations/${organization.id}/subscriptions/checkout`,
       )
       .set("Authorization", authHeader(owner.id))
-      .send({ planKey: "growth", interval: "month" });
+      .send({ planId: activePlan.id, interval: "month" });
     expect(inactivePriceCheckout.status).toBe(409);
     expect(inactivePriceCheckout.body.code).toBe("PLAN_PRICE_NOT_CONFIGURED");
   });

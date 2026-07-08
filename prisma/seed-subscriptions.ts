@@ -7,7 +7,7 @@ import { prisma } from "../src/prisma.js";
 
 const PLAN_CATALOG = [
   {
-    key: "starter",
+    id: "11111111-1111-4111-8111-111111111111",
     name: "Starter",
     sortOrder: 10,
     includedAppKeys: [] as string[],
@@ -19,14 +19,14 @@ const PLAN_CATALOG = [
     }>,
   },
   {
-    key: "growth",
+    id: "22222222-2222-4222-8222-222222222222",
     name: "Growth",
     sortOrder: 20,
     includedAppKeys: [] as string[],
     prices: [],
   },
   {
-    key: "business",
+    id: "33333333-3333-4333-8333-333333333333",
     name: "Business",
     sortOrder: 30,
     includedAppKeys: [] as string[],
@@ -37,9 +37,9 @@ const PLAN_CATALOG = [
 async function main() {
   for (const planConfig of PLAN_CATALOG) {
     const plan = await prisma.subscriptionPlan.upsert({
-      where: { key: planConfig.key },
+      where: { id: planConfig.id },
       create: {
-        key: planConfig.key,
+        id: planConfig.id,
         name: planConfig.name,
         sortOrder: planConfig.sortOrder,
       },

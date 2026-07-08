@@ -1,12 +1,12 @@
 import { Prisma } from "../../../generated/prisma/client.js";
 import { SuperAdminStatus } from "../../../generated/prisma/enums.js";
 import { prisma } from "../../../prisma.js";
+import { parseId } from "../../../utils/parseId.js";
 import { isWriteConflictError } from "../../../utils/prisma.utils.js";
 import { SUPER_ADMIN_SELECT } from "../authentication/super_admin_auth.helpers.js";
 
 export const parseSuperAdminId = (value: unknown) => {
-  if (typeof value !== "string" || !/^\d+$/.test(value)) return null;
-  return BigInt(value);
+  return typeof value === "string" ? parseId(value) : null;
 };
 
 export const normalizeText = (value: unknown) =>
@@ -22,7 +22,7 @@ export const isValidSuperAdminPassword = (password: string) =>
   password.length >= 12;
 
 export const updateStatusSafely = async (
-  superAdminId: bigint,
+  superAdminId: string,
   status: SuperAdminStatus,
 ) => {
   for (let attempt = 0; attempt < 3; attempt += 1) {

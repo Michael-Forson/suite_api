@@ -16,14 +16,14 @@ export type AppAccessSource =
   | "NONE";
 
 export interface EffectiveAppAccess {
-  organizationId: bigint;
-  organizationMemberId: bigint | null;
-  userId: bigint;
+  organizationId: string;
+  organizationMemberId: string | null;
+  userId: string;
   organizationRole: OrganizationRole;
-  appId: bigint;
+  appId: string;
   appKey: string;
   role: {
-    id: bigint;
+    id: string;
     key: string | null;
     name: string;
     isDefault: boolean;
@@ -44,11 +44,11 @@ type AppAccessResult =
   | { ok: false; error: AppAccessFailure };
 
 const activePermissionKeys = (
-  appId: bigint,
+  appId: string,
   links:
     | Array<{
         appPermission: {
-          appId: bigint;
+          appId: string;
           key: string;
           status: AppPermissionStatus;
         };
@@ -77,7 +77,7 @@ export const resolveEffectiveAppAccess = async ({
     userId,
     organizationRole,
   } = organizationAccess;
-  const lookupOrganizationMemberId = organizationMemberId ?? BigInt(0);
+  const lookupOrganizationMemberId = organizationMemberId ?? "";
 
   const app = await prisma.app.findUnique({
     where: { key: appKey },

@@ -3,6 +3,7 @@ import asyncHandler from "express-async-handler";
 import { SuperAdminStatus } from "../../../generated/prisma/enums.js";
 import { SuperAdminAuthRequest } from "../../../middleware/super-admin/superAdminAuth.middleware.js";
 import { prisma } from "../../../prisma.js";
+import { parseId } from "../../../utils/parseId.js";
 import { comparePassword } from "../../../utils/password.js";
 import {
   verifyRefreshToken,
@@ -86,7 +87,9 @@ export const refreshSuperAdminToken = asyncHandler(async (req, res) => {
       type?: string;
     };
 
-    if (decoded.type !== "super-admin" || !decoded.id) {
+    const superAdminId = parseId(decoded.id ?? "");
+
+    if (decoded.type !== "super-admin" || !superAdminId) {
       res.status(401).json({
         success: false,
         message: "Invalid refresh token.",
@@ -95,7 +98,7 @@ export const refreshSuperAdminToken = asyncHandler(async (req, res) => {
     }
 
     const superAdmin = await prisma.superAdmin.findUnique({
-      where: { id: BigInt(decoded.id) },
+      where: { id: superAdminId },
       select: SUPER_ADMIN_SELECT,
     });
 
@@ -125,7 +128,7 @@ export const refreshSuperAdminToken = asyncHandler(async (req, res) => {
 export const getSuperAdminProfile = asyncHandler(
   async (req: SuperAdminAuthRequest, res: Response) => {
     const superAdmin = await prisma.superAdmin.findUnique({
-      where: { id: BigInt(req.superAdminId!) },
+      where: { id: req.superAdminId! },
       select: SUPER_ADMIN_SELECT,
     });
 

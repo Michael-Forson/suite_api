@@ -1,6 +1,7 @@
 import { NextFunction, Request, Response } from "express";
 import { SuperAdminStatus } from "../../generated/prisma/enums.js";
 import { prisma } from "../../prisma.js";
+import { parseId } from "../../utils/parseId.js";
 import { verifyAccessToken } from "../../utils/tokens.js";
 
 export interface SuperAdminContext {
@@ -36,7 +37,9 @@ export const superAdminAuthenticate = async (
       "super-admin",
     ) as { id?: string; type?: string };
 
-    if (decoded.type !== "super-admin" || !decoded.id) {
+    const superAdminId = parseId(decoded.id ?? "");
+
+    if (decoded.type !== "super-admin" || !superAdminId) {
       res.status(401).json({
         success: false,
         message: "Invalid token type for this resource.",
@@ -45,7 +48,7 @@ export const superAdminAuthenticate = async (
     }
 
     const superAdmin = await prisma.superAdmin.findUnique({
-      where: { id: BigInt(decoded.id) },
+      where: { id: superAdminId },
       select: {
         id: true,
         status: true,
@@ -63,16 +66,16 @@ export const superAdminAuthenticate = async (
       return;
     }
 
-    req.superAdminId = superAdmin.id.toString();
+    req.superAdminId = superAdmin.id;
     req.superAdmin = {
-      id: superAdmin.id.toString(),
+      id: superAdmin.id,
       firstName: superAdmin.firstName,
       lastName: superAdmin.lastName,
       email: superAdmin.email,
     };
     next();
   } catch (error: any) {
-    if (error.name !== "TokenExpiredError") {
+    if (process.env.NODE_ENV !== "test" && error.name !== "TokenExpiredError") {
       console.error("Super-admin token verification error:", error.message);
     }
     res.status(401).json({

@@ -112,18 +112,18 @@ export const invitationExpiresAt = () => {
 
 export const serializeInvitation = <
   T extends {
-    id: bigint;
-    organizationId: bigint;
-    invitedBy: bigint;
+    id: string;
+    organizationId: string;
+    invitedBy: string;
     organization?: {
-      id: bigint;
+      id: string;
       name: string;
       slug: string;
-      ownerId: bigint;
+      ownerId: string;
       status: AccountStatus;
     };
     inviter?: {
-      id: bigint;
+      id: string;
       firstName: string | null;
       lastName: string | null;
       email: string | null;
@@ -215,8 +215,8 @@ export const sendOrganizationInvitationEmail = async (
 };
 
 export const findInvitationForOrganization = async (
-  organizationId: bigint,
-  invitationId: bigint,
+  organizationId: string,
+  invitationId: string,
   res: Response,
 ) => {
   const invitation = await prisma.organizationInvitation.findFirst({
@@ -240,7 +240,7 @@ export const findInvitationForOrganization = async (
 
 export const expireInvitationIfNeeded = async (
   invitation: {
-    id: bigint;
+    id: string;
     status: InvitationStatus;
     expiresAt: Date;
   },

@@ -2,6 +2,7 @@ import {
   BillingInterval,
   SubscriptionStatus,
 } from "../../../generated/prisma/enums.js";
+import { parseId } from "../../../utils/parseId.js";
 
 export const parseBillingInterval = (value: unknown) => {
   if (typeof value !== "string") return null;
@@ -13,11 +14,8 @@ export const parseBillingInterval = (value: unknown) => {
   return null;
 };
 
-export const normalizePlanKey = (value: unknown) => {
-  if (typeof value !== "string") return null;
-  const key = value.trim().toLowerCase();
-  return key && key.length <= 100 ? key : null;
-};
+export const normalizePlanId = (value: unknown) =>
+  typeof value === "string" ? parseId(value) : null;
 
 export const normalizeStripeSubscriptionStatus = (
   status?: string | null,

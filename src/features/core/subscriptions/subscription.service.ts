@@ -10,6 +10,7 @@ import { prisma } from "../../../prisma.js";
 import { stripeService } from "../../../services/stripe/stripe.service.js";
 import { StripeSubscriptionObject } from "../../../services/stripe/stripe.types.js";
 import { getCustomerPaymentEmail } from "../../../utils/paymentEmail.js";
+import { parseId } from "../../../utils/parseId.js";
 import {
   normalizeStripeSubscriptionStatus,
   subscriptionHasAccess,
@@ -34,8 +35,7 @@ const serviceError = (
   return error;
 };
 
-const serializeBigInt = (value: bigint | null | undefined) =>
-  value?.toString() ?? null;
+const serializeId = (value: string | null | undefined) => value ?? null;
 
 const serializeMoney = (amount: unknown) =>
   amount === null || amount === undefined ? null : Number(amount);
@@ -63,7 +63,6 @@ const serializeApp = (app: any) => ({
 
 type CheckoutSnapshot = {
   planId: string;
-  planKey: string;
   provider: BillingProvider;
   billingInterval: BillingInterval;
   includedAppIds: string[];
@@ -76,13 +75,12 @@ const createCheckoutSnapshot = ({
   includedAppIds,
   price,
 }: {
-  plan: { id: bigint; key: string };
+  plan: { id: string };
   billingInterval: BillingInterval;
-  includedAppIds: bigint[];
+  includedAppIds: string[];
   price: any;
 }): CheckoutSnapshot => ({
-  planId: serializeBigInt(plan.id) || "",
-  planKey: plan.key,
+  planId: serializeId(plan.id) || "",
   provider: BillingProvider.STRIPE,
   billingInterval,
   includedAppIds: includedAppIds.map((appId) => appId.toString()),
@@ -105,7 +103,7 @@ export const listSubscriptionPlansForOrganization = async ({
   organizationId,
   interval,
 }: {
-  organizationId: bigint;
+  organizationId: string;
   interval: BillingInterval;
 }) => {
   const organization = await prisma.organization.findUnique({
@@ -138,7 +136,6 @@ export const listSubscriptionPlansForOrganization = async ({
     const price = serializePrice(plan.prices[0] ?? null);
     return {
       id: plan.id.toString(),
-      key: plan.key,
       name: plan.name,
       description: plan.description,
       checkoutReady: Boolean(price),
@@ -163,7 +160,7 @@ const ensureStripeCustomer = async ({
   organizationName,
   ownerEmail,
 }: {
-  organizationId: bigint;
+  organizationId: string;
   organizationName: string;
   ownerEmail?: string | null;
 }) => {
@@ -198,12 +195,12 @@ const ensureStripeCustomer = async ({
 export const createSubscriptionCheckout = async ({
   organizationId,
   userId,
-  planKey,
+  planId,
   interval,
 }: {
-  organizationId: bigint;
-  userId: bigint;
-  planKey: string;
+  organizationId: string;
+  userId: string;
+  planId: string;
   interval: BillingInterval;
 }) => {
   const existingActive = await prisma.organizationSubscription.findFirst({
@@ -222,7 +219,7 @@ export const createSubscriptionCheckout = async ({
   }
 
   const plan = await prisma.subscriptionPlan.findUnique({
-    where: { key: planKey },
+    where: { id: planId },
     include: {
       includedApps: {
         where: { app: { status: AppStatus.ACTIVE } },
@@ -305,7 +302,7 @@ export const createSubscriptionCheckout = async ({
     metadata: {
       organizationId: organizationId.toString(),
       subscriptionId: subscription.id.toString(),
-      planKey: plan.key,
+      planId: plan.id.toString(),
       billingInterval: interval,
     },
   });
@@ -332,7 +329,7 @@ export const createSubscriptionCheckout = async ({
   };
 };
 
-export const serializeCurrentSubscription = async (organizationId: bigint) => {
+export const serializeCurrentSubscription = async (organizationId: string) => {
   const subscription = await prisma.organizationSubscription.findUnique({
     where: { organizationId },
     include: {
@@ -362,7 +359,6 @@ export const serializeCurrentSubscription = async (organizationId: bigint) => {
     currentPeriodEnd: subscription.currentPeriodEnd,
     plan: {
       id: subscription.plan.id.toString(),
-      key: subscription.plan.key,
       name: subscription.plan.name,
       description: subscription.plan.description,
     },
@@ -373,7 +369,7 @@ export const serializeCurrentSubscription = async (organizationId: bigint) => {
 };
 
 export const applySubscriptionAccess = async (
-  subscriptionId: bigint,
+  subscriptionId: string,
   status: SubscriptionStatus,
 ) => {
   const subscription = await prisma.organizationSubscription.findUnique({
@@ -457,14 +453,8 @@ export const applySubscriptionAccess = async (
   });
 };
 
-const bigintFromValue = (value: unknown) => {
-  if (typeof value !== "string" && typeof value !== "number") return null;
-  try {
-    return BigInt(value);
-  } catch {
-    return null;
-  }
-};
+const uuidFromValue = (value: unknown) =>
+  typeof value === "string" ? parseId(value) : null;
 
 export const processStripeCheckoutCompleted = async (session: any) => {
   const providerSessionId = String(session.id || "");
@@ -481,7 +471,7 @@ export const processStripeCheckoutCompleted = async (session: any) => {
     : null;
   const subscriptionId = checkoutSession?.subscriptionId
     ? checkoutSession.subscriptionId
-    : bigintFromValue(metadata.subscriptionId);
+    : uuidFromValue(metadata.subscriptionId);
   if (!subscriptionId) return;
 
   const nextStatus =

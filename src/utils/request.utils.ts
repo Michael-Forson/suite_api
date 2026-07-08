@@ -11,7 +11,7 @@ export const authenticatedUserId = (req: AuthRequest, res: Response) => {
     return null;
   }
 
-  return BigInt(req.userId);
+  return req.userId;
 };
 
 export const idFromParams = (id: string | string[] | undefined) =>

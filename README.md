@@ -209,21 +209,9 @@ The compose file builds this package and maps host port `3000` to container port
 
 ## Current Caveats
 
-This starter pack currently needs a schema/dependency cleanup before the TypeScript
-build is fully green.
-
-Known `npx tsc --noEmit` issues observed on 2026-06-16:
-
-- AWS SDK type declaration errors from the installed S3 package set, including
-  missing flexible checksum exports and missing S3 client configuration types.
-- Prisma schema/client mismatch. Source code references Prisma models that are
-  not present in `prisma/schema.prisma` or the generated source client:
-  `DeviceToken`, `PlatformConfig`, and `AppVersion`.
-- Notification code depends on `prisma.deviceToken`.
-- Config code depends on `prisma.platformConfig` and `prisma.appVersion`.
-
-Until those are resolved, use the docs as an onboarding map and treat affected
-routes as requiring schema alignment before production use.
+The TypeScript build skips third-party declaration checks so dependency package
+type drift does not block application builds. Project source remains checked
+with `strict` mode enabled.
 
 ## Troubleshooting
 
@@ -232,7 +220,5 @@ routes as requiring schema alignment before production use.
   so set the key when payments are enabled.
 - OTP send failures: check ArkAsel and WhatsApp environment variables. OTP
   channel delivery failures are logged independently.
-- Config route returns missing config data: add and seed the platform config and
-  app-version tables once their Prisma models exist.
-- Push notification routes fail at compile time: add the `DeviceToken` Prisma
-  model and regenerate the Prisma client.
+- Config route returns missing config data: seed the platform config and
+  app-version tables.

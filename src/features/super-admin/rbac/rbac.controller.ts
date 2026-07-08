@@ -63,6 +63,17 @@ export const createAppPermission = asyncHandler(async (req, res) => {
     });
     return;
   }
+  const existingPermission = await prisma.appPermission.findUnique({
+    where: { appId_key: { appId: app.id, key } },
+    select: { id: true },
+  });
+  if (existingPermission) {
+    res.status(409).json({
+      success: false,
+      message: "Permission key already exists for this app",
+    });
+    return;
+  }
 
   try {
     const permission = await prisma.appPermission.create({
@@ -234,6 +245,20 @@ export const createRole = asyncHandler(async (req, res) => {
     });
     return;
   }
+  const existingRole = await prisma.appRole.findFirst({
+    where: {
+      appId: app.id,
+      OR: [{ key }, { name }],
+    },
+    select: { id: true },
+  });
+  if (existingRole) {
+    res.status(409).json({
+      success: false,
+      message: "Role key or name already exists for this app",
+    });
+    return;
+  }
 
   try {
     const role = await prisma.appRole.create({
@@ -303,6 +328,23 @@ export const updateRole = asyncHandler(async (req, res) => {
       message: "Provide at least one role detail to update",
     });
     return;
+  }
+  if (data.name) {
+    const existingRoleName = await prisma.appRole.findFirst({
+      where: {
+        appId: app.id,
+        name: data.name,
+        id: { not: role.id },
+      },
+      select: { id: true },
+    });
+    if (existingRoleName) {
+      res.status(409).json({
+        success: false,
+        message: "Role name already exists for this app",
+      });
+      return;
+    }
   }
 
   try {

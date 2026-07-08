@@ -1,13 +1,10 @@
-/**
- * Safely converts a route param string to BigInt.
- * Returns null if the value is not a valid positive integer string,
- * preventing SyntaxError crashes when non-numeric strings reach BigInt().
- */
-export function parseId(id: string): bigint | null {
-  if (!/^\d+$/.test(id)) return null;
-  try {
-    return BigInt(id);
-  } catch {
-    return null;
-  }
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+export function parseId(id: string): string | null {
+  const value = id.trim();
+  return UUID_REGEX.test(value) ? value : null;
 }
+
+export const isUuid = (value: unknown): value is string =>
+  typeof value === "string" && parseId(value) !== null;

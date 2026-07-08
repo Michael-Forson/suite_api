@@ -28,7 +28,7 @@ export const appKeyFromValue = (value: unknown) => {
 
 export const serializeApp = <
   T extends {
-    id: bigint;
+    id: string;
     _count?: {
       organizationApps?: number;
       appPermissions?: number;
