@@ -49,7 +49,7 @@ export const APP_ROLE_SELECT = {
 } as const;
 
 export const serializeAppPermission = <
-  T extends { id: bigint; appId: bigint },
+  T extends { id: string; appId: string },
 >(
   permission: T,
 ) => ({
@@ -60,8 +60,8 @@ export const serializeAppPermission = <
 
 export const serializeAppRole = <
   T extends {
-    id: bigint;
-    appId: bigint;
+    id: string;
+    appId: string;
     appRolePermissions?: Array<{
       appPermission: Parameters<typeof serializeAppPermission>[0];
     }>;

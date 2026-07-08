@@ -42,9 +42,9 @@ const MANAGEABLE_STATUSES: MemberStatus[] = [
 ];
 
 export type MemberManager = {
-  organizationId: bigint;
-  ownerId: bigint;
-  userId: bigint;
+  organizationId: string;
+  ownerId: string;
+  userId: string;
   organizationRole: OrganizationRole;
 };
 
@@ -64,12 +64,12 @@ export const manageableMemberStatuses = () => MANAGEABLE_STATUSES.join(", ");
 
 export const serializeMember = <
   T extends {
-    id: bigint;
-    organizationId: bigint;
-    userId: bigint;
-    invitedBy: bigint | null;
+    id: string;
+    organizationId: string;
+    userId: string;
+    invitedBy: string | null;
     user?: {
-      id: bigint;
+      id: string;
       firstName: string | null;
       lastName: string | null;
       email: string | null;
@@ -95,8 +95,8 @@ export const serializeMember = <
 });
 
 export const requireMemberManager = async (
-  organizationId: bigint,
-  userId: bigint,
+  organizationId: string,
+  userId: string,
   res: Response,
 ): Promise<MemberManager | null> => {
   const user = await prisma.user.findUnique({
@@ -180,8 +180,8 @@ export const requireMemberManager = async (
 };
 
 export const findTargetMember = async (
-  organizationId: bigint,
-  memberId: bigint,
+  organizationId: string,
+  memberId: string,
   res: Response,
 ) => {
   const member = await prisma.organizationMember.findFirst({
@@ -206,7 +206,7 @@ export const findTargetMember = async (
 export const canManageTargetMember = (
   actor: MemberManager,
   target: {
-    userId: bigint;
+    userId: string;
     organizationRole: OrganizationRole;
   },
   res: Response,

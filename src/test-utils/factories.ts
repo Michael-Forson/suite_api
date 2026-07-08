@@ -101,12 +101,12 @@ export async function createTestMember({
   jobTitle = null,
   invitedBy = null,
 }: {
-  organizationId: bigint;
+  organizationId: string;
   user?: Awaited<ReturnType<typeof createTestUser>>;
   organizationRole?: OrganizationRole;
   status?: MemberStatus;
   jobTitle?: string | null;
-  invitedBy?: bigint | null;
+  invitedBy?: string | null;
 }) {
   const memberUser = user || (await createTestUser());
 
@@ -139,19 +139,16 @@ export async function createTestApp(overrides: Record<string, any> = {}) {
 }
 
 export async function createTestSubscriptionPlan({
-  key = nextId("plan"),
   name = "Test Plan",
   includedAppIds = [],
   ...overrides
 }: {
-  key?: string;
   name?: string;
-  includedAppIds?: bigint[];
+  includedAppIds?: string[];
   [key: string]: any;
 } = {}) {
   return prisma.subscriptionPlan.create({
     data: {
-      key,
       name,
       ...overrides,
       includedApps: {
@@ -170,7 +167,7 @@ export async function createTestSubscriptionPlanPrice({
   amount = 19,
   ...overrides
 }: {
-  planId: bigint;
+  planId: string;
   provider?: BillingProvider;
   billingInterval?: BillingInterval;
   currency?: string;
@@ -198,9 +195,9 @@ export async function createTestOrganizationApp({
   status = OrganizationAppStatus.ACTIVE,
   accessType = OrganizationAppAccessType.FREE,
 }: {
-  organizationId: bigint;
+  organizationId: string;
   app?: Awaited<ReturnType<typeof createTestApp>>;
-  enabledBy?: bigint | null;
+  enabledBy?: string | null;
   status?: OrganizationAppStatus;
   accessType?: OrganizationAppAccessType;
 }) {
@@ -226,7 +223,7 @@ export async function createTestPermission({
   status = AppPermissionStatus.ACTIVE,
   ...overrides
 }: {
-  appId: bigint;
+  appId: string;
   key?: string;
   label?: string;
   status?: AppPermissionStatus;
@@ -252,12 +249,12 @@ export async function createTestAppRole({
   appPermissionIds = [],
   ...overrides
 }: {
-  appId: bigint;
+  appId: string;
   key?: string;
   name?: string;
   isDefault?: boolean;
   status?: RoleStatus;
-  appPermissionIds?: bigint[];
+  appPermissionIds?: string[];
   [key: string]: any;
 }) {
   return prisma.appRole.create({
@@ -283,10 +280,10 @@ export async function assignTestAppRole({
   appRoleId,
   assignedBy = null,
 }: {
-  organizationMemberId: bigint;
-  appId: bigint;
-  appRoleId: bigint;
-  assignedBy?: bigint | null;
+  organizationMemberId: string;
+  appId: string;
+  appRoleId: string;
+  assignedBy?: string | null;
 }) {
   return prisma.memberAppRole.create({
     data: {
@@ -307,8 +304,8 @@ export async function createTestInvitation({
   token = generateTestInvitationToken(),
   expiresAt = testInvitationExpiresAt(),
 }: {
-  organizationId: bigint;
-  invitedBy: bigint;
+  organizationId: string;
+  invitedBy: string;
   email?: string;
   organizationRole?: OrganizationRole;
   status?: InvitationStatus;

@@ -10,7 +10,7 @@ import {
 } from "../../../utils/tokens.js";
 
 export const buildUserOrgAccessClaims = async (
-  userId: bigint,
+  userId: string,
 ): Promise<UserOrgAccessClaim[]> => {
   const [memberships, ownedOrganizations] = await prisma.$transaction([
     prisma.organizationMember.findMany({
@@ -82,7 +82,7 @@ export const buildUserOrgAccessClaims = async (
   return Array.from(claimsByOrganization.values());
 };
 
-export const issueUserTokens = async (userId: bigint) => {
+export const issueUserTokens = async (userId: string) => {
   const orgs = await buildUserOrgAccessClaims(userId);
 
   return {

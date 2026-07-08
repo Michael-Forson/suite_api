@@ -21,7 +21,7 @@ export interface UserAccessTokenClaims {
 }
 
 export const generateAccessToken = (
-  id: bigint | string | number,
+  id: string,
   type: TokenType,
   claims: UserAccessTokenClaims = {},
 ) => {
@@ -46,7 +46,7 @@ export const generateAccessToken = (
 };
 
 export const generateRefreshToken = (
-  id: bigint | string | number,
+  id: string,
   type: TokenType,
 ) => {
   let secret: string | undefined;

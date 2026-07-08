@@ -47,6 +47,17 @@ export const createSuperAdmin = asyncHandler(
       });
       return;
     }
+    const existingEmail = await prisma.superAdmin.findUnique({
+      where: { email },
+      select: { id: true },
+    });
+    if (existingEmail) {
+      res.status(409).json({
+        success: false,
+        message: "A super-admin account with this email already exists.",
+      });
+      return;
+    }
 
     let superAdmin;
     try {
@@ -188,6 +199,22 @@ export const updateSuperAdmin = asyncHandler(
         message: "Provide at least one super-admin field to update.",
       });
       return;
+    }
+    if (data.email) {
+      const existingEmail = await prisma.superAdmin.findFirst({
+        where: {
+          email: data.email,
+          id: { not: superAdminId },
+        },
+        select: { id: true },
+      });
+      if (existingEmail) {
+        res.status(409).json({
+          success: false,
+          message: "A super-admin account with this email already exists.",
+        });
+        return;
+      }
     }
 
     let superAdmin;

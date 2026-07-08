@@ -3,7 +3,7 @@ import asyncHandler from "express-async-handler";
 import { AuthRequest } from "../../../middleware/users/auth.middleware.js";
 import { OrganizationAccessRequest } from "../organization/org.middleware.js";
 import {
-  normalizePlanKey,
+  normalizePlanId,
   parseBillingInterval,
 } from "./subscription.helpers.js";
 import {
@@ -66,12 +66,12 @@ export const checkoutSubscription = asyncHandler(
       return;
     }
 
-    const planKey = normalizePlanKey(req.body.planKey);
+    const planId = normalizePlanId(req.body.planId);
     const interval = parseBillingInterval(req.body.interval);
-    if (!planKey || !interval) {
+    if (!planId || !interval) {
       res.status(400).json({
         success: false,
-        message: "planKey and interval are required",
+        message: "planId and interval are required",
       });
       return;
     }
@@ -80,7 +80,7 @@ export const checkoutSubscription = asyncHandler(
       const data = await createSubscriptionCheckout({
         organizationId,
         userId,
-        planKey,
+        planId,
         interval,
       });
       res.status(200).json({

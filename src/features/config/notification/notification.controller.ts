@@ -134,7 +134,7 @@ export const getUserNotifications = asyncHandler(
       where: {
         createdAt: { gte: threeWeeksAgo },
         OR: [
-          { userId: BigInt(userId) },
+          { userId: userId },
           {
             userId: null,
             targetAudience: { in: ["USER", "ALL"] },

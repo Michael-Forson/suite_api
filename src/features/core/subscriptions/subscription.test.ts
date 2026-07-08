@@ -29,6 +29,8 @@ const mockedVerifyWebhookSignature = jest.fn<
   (payload: string, signature: string) => boolean
 >();
 const mockedParseWebhookEvent = jest.fn<(payload: any) => any>();
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 (jest as any).unstable_mockModule(
   "../../../services/stripe/stripe.service.js",
@@ -93,13 +95,11 @@ async function createCatalog() {
   });
 
   const starter = await createTestSubscriptionPlan({
-    key: "starter",
     name: "Starter",
     sortOrder: 10,
     includedAppIds: [invoicing.id],
   });
   const growth = await createTestSubscriptionPlan({
-    key: "growth",
     name: "Growth",
     sortOrder: 20,
     includedAppIds: [invoicing.id, inventory.id],
@@ -128,7 +128,7 @@ async function createCatalog() {
 describe("stripe plan subscriptions", () => {
   it("lists active plans with included apps and checkout readiness", async () => {
     const { organization, owner } = await createTestOrganization();
-    await createCatalog();
+    const { starter, growth } = await createCatalog();
 
     const response = await request(app)
       .get(`/user/api/v1/organizations/${organization.id}/subscriptions/plans`)
@@ -141,12 +141,13 @@ describe("stripe plan subscriptions", () => {
       billingInterval: BillingInterval.MONTH,
       checkoutProviderReady: true,
     });
-    expect(response.body.data.plans.map((plan: any) => plan.key)).toEqual([
-      "starter",
-      "growth",
+    expect(response.body.data.plans.map((plan: any) => plan.id)).toEqual([
+      starter.id,
+      growth.id,
     ]);
     expect(response.body.data.plans[0]).toMatchObject({
-      key: "starter",
+      id: starter.id,
+      name: "Starter",
       checkoutReady: true,
       price: {
         provider: BillingProvider.STRIPE,
@@ -158,14 +159,14 @@ describe("stripe plan subscriptions", () => {
 
   it("creates Stripe checkout for a selected plan", async () => {
     const { organization, owner } = await createTestOrganization();
-    await createCatalog();
+    const { starter } = await createCatalog();
 
     const response = await request(app)
       .post(
         `/user/api/v1/organizations/${organization.id}/subscriptions/checkout`,
       )
       .set("Authorization", authHeader(owner.id))
-      .send({ planKey: "starter", interval: "month" });
+      .send({ planId: starter.id, interval: "month" });
 
     expect(response.status).toBe(200);
     expect(response.body.data).toMatchObject({
@@ -176,6 +177,10 @@ describe("stripe plan subscriptions", () => {
       expect.objectContaining({
         customerId: "cus_test",
         priceId: "price_starter_month",
+        metadata: expect.objectContaining({
+          organizationId: expect.stringMatching(UUID_REGEX),
+          subscriptionId: expect.stringMatching(UUID_REGEX),
+        }),
       }),
     );
 
@@ -190,14 +195,14 @@ describe("stripe plan subscriptions", () => {
     const { user: member } = await createTestMember({
       organizationId: organization.id,
     });
-    await createCatalog();
+    const { starter } = await createCatalog();
 
     const response = await request(app)
       .post(
         `/user/api/v1/organizations/${organization.id}/subscriptions/checkout`,
       )
       .set("Authorization", authHeader(member.id))
-      .send({ planKey: "starter", interval: "month" });
+      .send({ planId: starter.id, interval: "month" });
 
     expect(response.status).toBe(403);
   });
@@ -214,7 +219,7 @@ describe("stripe plan subscriptions", () => {
         `/user/api/v1/organizations/${organization.id}/subscriptions/checkout`,
       )
       .set("Authorization", authHeader(owner.id))
-      .send({ planKey: "starter", interval: "month" });
+      .send({ planId: starter.id, interval: "month" });
 
     expect(response.status).toBe(409);
     expect(response.body.code).toBe("PLAN_PRICE_NOT_CONFIGURED");
@@ -223,14 +228,14 @@ describe("stripe plan subscriptions", () => {
 
   it("activates and suspends paid plan app access from Stripe webhooks", async () => {
     const { organization, owner } = await createTestOrganization();
-    const { invoicing, inventory } = await createCatalog();
+    const { invoicing, inventory, growth } = await createCatalog();
 
     await request(app)
       .post(
         `/user/api/v1/organizations/${organization.id}/subscriptions/checkout`,
       )
       .set("Authorization", authHeader(owner.id))
-      .send({ planKey: "growth", interval: "month" });
+      .send({ planId: growth.id, interval: "month" });
 
     const completedResponse = await request(app)
       .post("/user/api/v1/subscriptions/stripe/webhook")
@@ -291,7 +296,7 @@ describe("stripe plan subscriptions", () => {
 
   it("does not suspend existing free app access", async () => {
     const { organization, owner } = await createTestOrganization();
-    const { invoicing, inventory } = await createCatalog();
+    const { invoicing, inventory, growth } = await createCatalog();
     await createTestOrganizationApp({
       organizationId: organization.id,
       app: inventory,
@@ -303,7 +308,7 @@ describe("stripe plan subscriptions", () => {
         `/user/api/v1/organizations/${organization.id}/subscriptions/checkout`,
       )
       .set("Authorization", authHeader(owner.id))
-      .send({ planKey: "growth", interval: "month" });
+      .send({ planId: growth.id, interval: "month" });
 
     await request(app)
       .post("/user/api/v1/subscriptions/stripe/webhook")

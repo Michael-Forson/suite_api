@@ -4,7 +4,9 @@ import { prisma } from "../../prisma.js";
 
 /** Load the singleton platform config row. Reusable by other modules. */
 export const loadPlatformConfig = async () => {
-  const config = await prisma.platformConfig.findUnique({ where: { id: 1 } });
+  const config = await prisma.platformConfig.findFirst({
+    orderBy: { createdAt: "asc" },
+  });
   if (!config) {
     throw new Error(
       "Platform config not found. Please seed the platform_config table.",

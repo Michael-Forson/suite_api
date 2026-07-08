@@ -5,12 +5,10 @@ import {
 } from "../../../generated/prisma/enums.js";
 import { prisma } from "../../../prisma.js";
 import { appKeyFromValue } from "../../../utils/app.utils.js";
+import { parseId } from "../../../utils/parseId.js";
 
-export const normalizePlanKey = (value: unknown) => {
-  if (typeof value !== "string") return null;
-  const key = value.trim().toLowerCase();
-  return key && key.length <= 100 ? key : null;
-};
+export const normalizePlanId = (value: unknown) =>
+  typeof value === "string" ? parseId(value) : null;
 
 export const parseBillingInterval = (value: unknown) => {
   if (typeof value !== "string") return null;
@@ -53,7 +51,6 @@ const serializeMoney = (amount: unknown) =>
 
 export const serializeSubscriptionPlan = (plan: any) => ({
   id: plan.id.toString(),
-  key: plan.key,
   name: plan.name,
   description: plan.description,
   sortOrder: plan.sortOrder,
@@ -95,14 +92,14 @@ export const findSubscriptionPlan = async (
   value: unknown,
   res: Response,
 ) => {
-  const key = normalizePlanKey(value);
-  if (!key) {
-    res.status(400).json({ success: false, message: "Invalid plan key" });
+  const id = normalizePlanId(value);
+  if (!id) {
+    res.status(400).json({ success: false, message: "Invalid plan id" });
     return null;
   }
 
   const plan = await prisma.subscriptionPlan.findUnique({
-    where: { key },
+    where: { id },
     include: subscriptionPlanInclude,
   });
   if (!plan) {

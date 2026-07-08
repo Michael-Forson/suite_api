@@ -1,6 +1,6 @@
 export function isSameUser(
-  resourceUserId: bigint | string,
+  resourceUserId: string,
   requestUserId: string,
 ): boolean {
-  return resourceUserId.toString() === requestUserId;
+  return resourceUserId === requestUserId;
 }

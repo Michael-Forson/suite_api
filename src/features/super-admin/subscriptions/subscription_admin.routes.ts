@@ -18,14 +18,14 @@ router.use(superAdminAuthenticate);
 
 router.get("/plans", listSubscriptionPlans);
 router.post("/plans", createSubscriptionPlan);
-router.get("/plans/:planKey", getSubscriptionPlan);
-router.patch("/plans/:planKey/details", updateSubscriptionPlanDetails);
-router.patch("/plans/:planKey/status", changeSubscriptionPlanStatus);
-router.post("/plans/:planKey/apps", addSubscriptionPlanApp);
-router.delete("/plans/:planKey/apps/:appKey", removeSubscriptionPlanApp);
-router.put("/plans/:planKey/prices", upsertSubscriptionPlanPrice);
+router.get("/plans/:planId", getSubscriptionPlan);
+router.patch("/plans/:planId/details", updateSubscriptionPlanDetails);
+router.patch("/plans/:planId/status", changeSubscriptionPlanStatus);
+router.post("/plans/:planId/apps", addSubscriptionPlanApp);
+router.delete("/plans/:planId/apps/:appKey", removeSubscriptionPlanApp);
+router.put("/plans/:planId/prices", upsertSubscriptionPlanPrice);
 router.patch(
-  "/plans/:planKey/prices/:interval/status",
+  "/plans/:planId/prices/:interval/status",
   changeSubscriptionPlanPriceStatus,
 );
 

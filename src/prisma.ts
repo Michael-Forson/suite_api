@@ -1,6 +1,6 @@
 import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
-import { PrismaClient } from "./generated/prisma/client.js";
+import { Prisma, PrismaClient } from "./generated/prisma/client.js";
 
 const connectionString = process.env.DATABASE_URL;
 // const connectionString = process.env.DATABASE_URL;
@@ -15,9 +15,16 @@ const adapter = new PrismaPg({
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 10000,
 });
+const logLevels: Prisma.LogLevel[] =
+  process.env.NODE_ENV === "test"
+    ? []
+    : process.env.NODE_ENV === "development"
+      ? ["error", "warn"]
+      : ["error"];
+
 const prisma = new PrismaClient({
   adapter,
-  log: process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"],
+  log: logLevels,
 });
 
 export { prisma };

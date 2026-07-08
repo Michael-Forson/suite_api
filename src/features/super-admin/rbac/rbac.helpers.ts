@@ -53,7 +53,7 @@ export const findApp = async (value: unknown, res: Response) => {
 };
 
 export const findAppPermission = async (
-  appId: bigint,
+  appId: string,
   value: unknown,
   res: Response,
 ) => {
@@ -74,7 +74,7 @@ export const findAppPermission = async (
 };
 
 export const findRole = async (
-  appId: bigint,
+  appId: string,
   value: unknown,
   res: Response,
 ) => {
@@ -102,7 +102,7 @@ export const permissionKeysFromBody = (value: unknown) => {
 };
 
 export const activeAppPermissionsForKeys = async (
-  appId: bigint,
+  appId: string,
   keys: string[],
 ) => {
   if (!keys.length) return [];

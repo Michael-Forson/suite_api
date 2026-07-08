@@ -1,7 +1,6 @@
 import asyncHandler from "express-async-handler";
 import { BillingProvider } from "../../../generated/prisma/enums.js";
 import { prisma } from "../../../prisma.js";
-import { isUniqueConstraintError } from "../../../utils/prisma.utils.js";
 import {
   normalizeNullableText,
   normalizeRequiredText,
@@ -11,7 +10,6 @@ import {
   findSubscriptionPlan,
   normalizeAmount,
   normalizeCurrency,
-  normalizePlanKey,
   normalizeProviderPriceId,
   normalizeSortOrder,
   parseBillingInterval,
@@ -20,17 +18,16 @@ import {
 } from "./subscription_admin.helpers.js";
 
 export const createSubscriptionPlan = asyncHandler(async (req, res) => {
-  const key = normalizePlanKey(req.body.key);
   const name = normalizeRequiredText(req.body.name, 150);
   const description = normalizeNullableText(req.body.description);
   const sortOrder = normalizeSortOrder(req.body.sortOrder);
   const isActive =
     req.body.isActive === undefined ? true : req.body.isActive === true;
 
-  if (!key || !name || description === undefined || sortOrder === null) {
+  if (!name || description === undefined || sortOrder === null) {
     res.status(400).json({
       success: false,
-      message: "A valid key, name, description, and sortOrder are required",
+      message: "A valid name, description, and sortOrder are required",
     });
     return;
   }
@@ -42,33 +39,21 @@ export const createSubscriptionPlan = asyncHandler(async (req, res) => {
     return;
   }
 
-  try {
-    const plan = await prisma.subscriptionPlan.create({
-      data: {
-        key,
-        name,
-        description,
-        sortOrder: sortOrder ?? 0,
-        isActive,
-      },
-      include: subscriptionPlanInclude,
-    });
+  const plan = await prisma.subscriptionPlan.create({
+    data: {
+      name,
+      description,
+      sortOrder: sortOrder ?? 0,
+      isActive,
+    },
+    include: subscriptionPlanInclude,
+  });
 
-    res.status(201).json({
-      success: true,
-      message: "Subscription plan created successfully",
-      data: { plan: serializeSubscriptionPlan(plan) },
-    });
-  } catch (error) {
-    if (isUniqueConstraintError(error)) {
-      res.status(409).json({
-        success: false,
-        message: "Subscription plan key already exists",
-      });
-      return;
-    }
-    throw error;
-  }
+  res.status(201).json({
+    success: true,
+    message: "Subscription plan created successfully",
+    data: { plan: serializeSubscriptionPlan(plan) },
+  });
 });
 
 export const listSubscriptionPlans = asyncHandler(async (_req, res) => {
@@ -84,7 +69,7 @@ export const listSubscriptionPlans = asyncHandler(async (_req, res) => {
 });
 
 export const getSubscriptionPlan = asyncHandler(async (req, res) => {
-  const plan = await findSubscriptionPlan(req.params.planKey, res);
+  const plan = await findSubscriptionPlan(req.params.planId, res);
   if (!plan) return;
 
   res.status(200).json({
@@ -94,15 +79,8 @@ export const getSubscriptionPlan = asyncHandler(async (req, res) => {
 });
 
 export const updateSubscriptionPlanDetails = asyncHandler(async (req, res) => {
-  const plan = await findSubscriptionPlan(req.params.planKey, res);
+  const plan = await findSubscriptionPlan(req.params.planId, res);
   if (!plan) return;
-  if ("key" in req.body) {
-    res.status(400).json({
-      success: false,
-      message: "Subscription plan key cannot be updated",
-    });
-    return;
-  }
 
   const data: {
     name?: string;
@@ -159,7 +137,7 @@ export const updateSubscriptionPlanDetails = asyncHandler(async (req, res) => {
 });
 
 export const changeSubscriptionPlanStatus = asyncHandler(async (req, res) => {
-  const plan = await findSubscriptionPlan(req.params.planKey, res);
+  const plan = await findSubscriptionPlan(req.params.planId, res);
   if (!plan) return;
   if (typeof req.body.isActive !== "boolean") {
     res.status(400).json({
@@ -183,7 +161,7 @@ export const changeSubscriptionPlanStatus = asyncHandler(async (req, res) => {
 });
 
 export const addSubscriptionPlanApp = asyncHandler(async (req, res) => {
-  const plan = await findSubscriptionPlan(req.params.planKey, res);
+  const plan = await findSubscriptionPlan(req.params.planId, res);
   if (!plan) return;
   const app = await findAppForPlan(req.body.appKey, res);
   if (!app) return;
@@ -215,7 +193,7 @@ export const addSubscriptionPlanApp = asyncHandler(async (req, res) => {
 });
 
 export const removeSubscriptionPlanApp = asyncHandler(async (req, res) => {
-  const plan = await findSubscriptionPlan(req.params.planKey, res);
+  const plan = await findSubscriptionPlan(req.params.planId, res);
   if (!plan) return;
   const app = await findAppForPlan(req.params.appKey, res);
   if (!app) return;
@@ -240,7 +218,7 @@ export const removeSubscriptionPlanApp = asyncHandler(async (req, res) => {
 });
 
 export const upsertSubscriptionPlanPrice = asyncHandler(async (req, res) => {
-  const plan = await findSubscriptionPlan(req.params.planKey, res);
+  const plan = await findSubscriptionPlan(req.params.planId, res);
   if (!plan) return;
 
   const interval = parseBillingInterval(req.body.interval);
@@ -305,7 +283,7 @@ export const upsertSubscriptionPlanPrice = asyncHandler(async (req, res) => {
 
 export const changeSubscriptionPlanPriceStatus = asyncHandler(
   async (req, res) => {
-    const plan = await findSubscriptionPlan(req.params.planKey, res);
+    const plan = await findSubscriptionPlan(req.params.planId, res);
     if (!plan) return;
     const interval = parseBillingInterval(req.params.interval);
     if (!interval) {

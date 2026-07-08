@@ -11,10 +11,10 @@ import { isActiveAccount } from "../../../utils/account.utils.js";
 import { idFromParams } from "../../../utils/request.utils.js";
 
 export interface OrganizationAccessContext {
-  organizationId: bigint;
-  organizationMemberId: bigint | null;
-  ownerId: bigint;
-  userId: bigint;
+  organizationId: string;
+  organizationMemberId: string | null;
+  ownerId: string;
+  userId: string;
   organizationRole: OrganizationRole;
   status: MemberStatus;
   organizationStatus: AccountStatus;
@@ -30,8 +30,8 @@ const organizationIdFromRequest = (req: AuthRequest) =>
 const resolveOrganizationAccessFromClaims = (
   req: AuthRequest,
   res: Response,
-  organizationId: bigint,
-  userId: bigint,
+  organizationId: string,
+  userId: string,
   options: { allowInactiveOrganization?: boolean },
 ): OrganizationAccessContext | null | undefined => {
   if (!req.orgAccessClaims) return undefined;
@@ -70,9 +70,9 @@ const resolveOrganizationAccessFromClaims = (
   return {
     organizationId,
     organizationMemberId: claim.organizationMemberId
-      ? BigInt(claim.organizationMemberId)
+      ? claim.organizationMemberId
       : null,
-    ownerId: BigInt(claim.ownerId),
+    ownerId: claim.ownerId,
     userId,
     organizationRole: claim.organizationRole,
     status: claim.memberStatus,
@@ -93,7 +93,7 @@ export const resolveOrganizationAccess = async (
     return null;
   }
 
-  const userId = BigInt(req.userId);
+  const userId = req.userId;
   const organizationId = organizationIdFromRequest(req);
   if (!organizationId) {
     res.status(400).json({
