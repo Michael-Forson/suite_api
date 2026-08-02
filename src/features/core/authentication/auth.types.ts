@@ -29,6 +29,21 @@ export interface LoginRequestBody {
   password: string;
 }
 
+export interface SendLoginCodeRequestBody {
+  email: string;
+}
+
+export interface VerifyLoginCodeRequestBody {
+  email: string;
+  code: string;
+}
+
+export interface RegisterWithEmailCodeRequestBody {
+  email: string;
+  password: string;
+  code: string;
+}
+
 export interface RequestPasswordResetBody {
   phone?: string;
   email?: string;
@@ -61,8 +76,7 @@ export interface UpdateProfileRequestBody {
 }
 
 export interface GoogleAuthRequestBody {
-  email: string;
-  googleId: string;
+  idToken: string;
 }
 
 export interface AppleAuthRequestBody {

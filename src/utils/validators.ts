@@ -26,7 +26,18 @@ export const normalizePhone = (phone: string): string => {
 
 export const isValidPassword = (password?: string) => {
   if (!password) return false;
-  return password.length >= 8;
+  return password.length >= 4;
+};
+
+// Trims and capitalizes the first letter, leaving the rest as typed
+// (e.g. "john" -> "John"). Returns undefined for empty/blank input so it can be
+// dropped into Prisma update data without overwriting an existing value.
+export const capitalizeFirstLetter = (
+  value?: string | null,
+): string | undefined => {
+  const trimmed = value?.trim();
+  if (!trimmed) return undefined;
+  return trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
 };
 
 export const parseDob = (dob?: string) => {

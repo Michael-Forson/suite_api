@@ -2,12 +2,13 @@ import { Router } from "express";
 import {
   registerUser,
   loginUser,
+  sendLoginCode,
+  verifyLoginCode,
+  registerWithEmailCode,
   requestPasswordReset,
   resetPassword,
   sendPhoneVerificationCode,
   verifyPhoneCode,
-  sendEmailCode,
-  verifyEmailCode,
   refreshToken,
   getMe,
   updateProfile,
@@ -30,6 +31,9 @@ const router = Router();
 // Apply multiple rate limiters: IP-based + identifier-based for SMS
 router.post("/register", registerLimiter, registerUser);
 router.post("/login", loginLimiter, loginUser);
+router.post("/send-login-code", emailLimiter, sendLoginCode);
+router.post("/verify-login-code", verifyCodeLimiter, verifyLoginCode);
+router.post("/register-with-email-code", verifyCodeLimiter, registerWithEmailCode);
 router.post(
   "/password-reset/request",
   smsLimiter,
@@ -49,14 +53,6 @@ router.post(
   optionalAuthenticate,
   verifyPhoneCode,
 );
-
-router.post(
-  "/send-verification-email",
-  authenticate,
-  emailLimiter,
-  sendEmailCode,
-);
-router.post("/verify-email", authenticate, verifyCodeLimiter, verifyEmailCode);
 
 router.post("/refresh-token", loginLimiter, refreshToken);
 router.post("/continue-with-google", loginLimiter, continueWithGoogle);

@@ -262,10 +262,13 @@ Body:
 
 ```json
 {
-  "email": "ama@example.com",
-  "googleId": "google-user-id"
+  "idToken": "<google-id-token>"
 }
 ```
+
+`idToken` is the credential returned by Google Identity Services on the frontend. The backend
+verifies it server-side against `GOOGLE_CLIENT_ID` and derives the user's email/name/Google ID
+from the verified token — it does not trust any email/googleId sent in the request body.
 
 Success:
 
@@ -276,7 +279,15 @@ Success:
   "data": {
     "user": {
       "id": "1",
+      "firstName": "Ama",
+      "lastName": "Owusu",
       "email": "ama@example.com",
+      "phone": null,
+      "gender": null,
+      "dob": null,
+      "emailVerifiedAt": "2026-07-11T00:00:00.000Z",
+      "phoneVerifiedAt": null,
+      "isActive": true,
       "authProvider": "GOOGLE"
     },
     "tokens": {

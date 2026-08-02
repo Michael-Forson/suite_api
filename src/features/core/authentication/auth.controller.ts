@@ -16,13 +16,17 @@ import {
   LoginRequestBody,
   RefreshTokenRequestBody,
   RegisterRequestBody,
+  RegisterWithEmailCodeRequestBody,
   RequestPasswordResetBody,
   ResetPasswordBody,
   SendCodeRequestBody,
+  SendLoginCodeRequestBody,
   UpdateProfileRequestBody,
+  VerifyLoginCodeRequestBody,
   VerifyPhoneCodeRequestBody,
 } from "./auth.types.js";
 import {
+  capitalizeFirstLetter,
   isValidCode,
   isValidEmail,
   isValidPhone,
@@ -34,6 +38,7 @@ import {
   createVerificationCode,
 } from "../../../utils/verificationCodes.js";
 import { dispatchOtp, type OtpChannel } from "../../../utils/otp.js";
+import { verifyGoogleIdToken } from "../../../utils/googleAuth.js";
 import {
   sendEmailVerificationCode,
   validateVerificationCode,
@@ -84,7 +89,7 @@ export const registerUser = asyncHandler(
     if (!isValidPassword(password)) {
       res.status(400).json({
         success: false,
-        message: "Password must be at least 8 characters",
+        message: "Password must be at least 4 characters",
       });
       return;
     }
@@ -149,8 +154,8 @@ export const registerUser = asyncHandler(
 
       const user = await prisma.user.create({
         data: {
-          firstName: firstName ?? null,
-          lastName: lastName ?? null,
+          firstName: capitalizeFirstLetter(firstName) ?? null,
+          lastName: capitalizeFirstLetter(lastName) ?? null,
           email: email ?? null,
           phone: phone ?? null,
           password: hashedPassword,
@@ -306,6 +311,244 @@ export const loginUser = asyncHandler(async (req: Request, res: Response) => {
   }
 });
 
+// Passwordless email login — step 1: email a one-time code. The code is created
+// and delivered by the shared verification service (same infra as email
+// verification). We don't reveal whether an account exists; the account is
+// found-or-created on verify, mirroring the Google flow.
+export const sendLoginCode = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { email }: SendLoginCodeRequestBody = req.body;
+
+    if (!email || !isValidEmail(email)) {
+      res.status(400).json({
+        success: false,
+        message: "Invalid email format",
+      });
+      return;
+    }
+
+    try {
+      const existing = await prisma.user.findUnique({
+        where: { email },
+        select: { firstName: true, isActive: true },
+      });
+
+      if (existing && !existing.isActive) {
+        res.status(403).json({
+          success: false,
+          message: "This account has been deactivated.",
+        });
+        return;
+      }
+
+      await sendEmailVerificationCode(email, {
+        codeLength: 6,
+        userName: existing?.firstName ?? "",
+      });
+
+      res.status(200).json({
+        success: true,
+        message: "We sent a login code to your email.",
+      });
+    } catch (error: any) {
+      console.error("Error in sendLoginCode:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to send login code. Please try again.",
+      });
+    }
+  },
+);
+
+// Passwordless email login — step 2: verify the code and log the user in,
+// creating the account on first use. Returns the same { user, tokens } shape as
+// the other continue-with providers.
+export const verifyLoginCode = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { email, code }: VerifyLoginCodeRequestBody = req.body;
+
+    if (!email || !isValidEmail(email)) {
+      res.status(400).json({
+        success: false,
+        message: "Invalid email format",
+      });
+      return;
+    }
+
+    const result = await validateVerificationCode(email, code, 6);
+    if (result.valid === false) {
+      res.status(400).json({ success: false, message: result.message });
+      return;
+    }
+
+    const userSelect = {
+      id: true,
+      firstName: true,
+      lastName: true,
+      email: true,
+      phone: true,
+      gender: true,
+      dob: true,
+      emailVerifiedAt: true,
+      phoneVerifiedAt: true,
+      isActive: true,
+      authProvider: true,
+    } as const;
+
+    try {
+      let user = await prisma.user.findUnique({
+        where: { email },
+        select: userSelect,
+      });
+
+      if (!user) {
+        user = await prisma.user.create({
+          data: {
+            email,
+            authProvider: AuthProvider.EMAIL,
+            emailVerifiedAt: new Date(),
+          },
+          select: userSelect,
+        });
+      } else if (!user.isActive) {
+        res.status(403).json({
+          success: false,
+          message: "This account has been deactivated.",
+        });
+        return;
+      } else if (!user.emailVerifiedAt) {
+        // Proving control of the inbox verifies the email.
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { emailVerifiedAt: new Date() },
+        });
+      }
+
+      const tokens = await issueUserTokens(user.id);
+
+      res.status(200).json({
+        success: true,
+        message: "Login successful",
+        data: {
+          user: { ...user, id: user.id.toString() },
+          tokens,
+        },
+      });
+    } catch (error: any) {
+      console.error("Error in verifyLoginCode:", error);
+      res.status(500).json({
+        success: false,
+        message: "An internal server error occurred. Please try again.",
+      });
+    }
+  },
+);
+
+// Register with a password, verifying the email via a one-time code first
+// (the code is requested through /auth/send-login-code). No name is collected
+// here — it's captured later via the profile update. Creates a new account, or
+// upgrades a passwordless (code-only) account by setting its password.
+export const registerWithEmailCode = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { email, password, code }: RegisterWithEmailCodeRequestBody = req.body;
+
+    if (!email || !isValidEmail(email)) {
+      res.status(400).json({ success: false, message: "Invalid email format" });
+      return;
+    }
+
+    if (!isValidPassword(password)) {
+      res.status(400).json({
+        success: false,
+        message: "Password must be at least 4 characters",
+      });
+      return;
+    }
+
+    const result = await validateVerificationCode(email, code, 6);
+    if (result.valid === false) {
+      res.status(400).json({ success: false, message: result.message });
+      return;
+    }
+
+    const userSelect = {
+      id: true,
+      firstName: true,
+      lastName: true,
+      email: true,
+      phone: true,
+      gender: true,
+      dob: true,
+      emailVerifiedAt: true,
+      phoneVerifiedAt: true,
+      isActive: true,
+      authProvider: true,
+    } as const;
+
+    try {
+      const existing = await prisma.user.findUnique({
+        where: { email },
+        select: { id: true, password: true, isActive: true },
+      });
+
+      if (existing && !existing.isActive) {
+        res.status(403).json({
+          success: false,
+          message: "This account has been deactivated.",
+        });
+        return;
+      }
+
+      if (existing && existing.password) {
+        res.status(409).json({
+          success: false,
+          message: "An account with this email already exists. Please log in.",
+        });
+        return;
+      }
+
+      const hashedPassword = await hashPassword(password);
+
+      const user = existing
+        ? await prisma.user.update({
+            where: { id: existing.id },
+            data: {
+              password: hashedPassword,
+              authProvider: AuthProvider.EMAIL,
+              emailVerifiedAt: new Date(),
+            },
+            select: userSelect,
+          })
+        : await prisma.user.create({
+            data: {
+              email,
+              password: hashedPassword,
+              authProvider: AuthProvider.EMAIL,
+              emailVerifiedAt: new Date(),
+            },
+            select: userSelect,
+          });
+
+      const tokens = await issueUserTokens(user.id);
+
+      res.status(201).json({
+        success: true,
+        message: "Registration successful",
+        data: {
+          user: { ...user, id: user.id.toString() },
+          tokens,
+        },
+      });
+    } catch (error: any) {
+      console.error("Error in registerWithEmailCode:", error);
+      res.status(500).json({
+        success: false,
+        message: "An internal server error occurred. Please try again.",
+      });
+    }
+  },
+);
+
 export const requestPasswordReset = asyncHandler(
   async (req: Request, res: Response) => {
     const { email, phone }: RequestPasswordResetBody = req.body;
@@ -412,7 +655,7 @@ export const resetPassword = asyncHandler(
     if (!isValidPassword(password)) {
       res.status(400).json({
         success: false,
-        message: "Password must be at least 8 characters",
+        message: "Password must be at least 4 characters",
       });
       return;
     }
@@ -1109,8 +1352,8 @@ export const updateProfile = asyncHandler(
       const updatedUser = await prisma.user.update({
         where: { id: userBigId },
         data: {
-          firstName: firstName || undefined,
-          lastName: lastName || undefined,
+          firstName: capitalizeFirstLetter(firstName),
+          lastName: capitalizeFirstLetter(lastName),
           phone: skipPhone ? undefined : phone || undefined,
           email: email || undefined,
           phoneVerifiedAt: phone && !skipPhone ? null : undefined,
@@ -1153,73 +1396,31 @@ export const updateProfile = asyncHandler(
   },
 );
 
-export const sendEmailCode = asyncHandler(
-  async (req: AuthRequest, res: Response) => {
-    const userId = req.userId;
-    if (!userId) {
-      res.status(401).json({ success: false, message: "Unauthorized" });
-      return;
-    }
 
-    const { email } = req.body;
-
-    if (!email || !isValidEmail(email)) {
-      res.status(400).json({
-        success: false,
-        message: "Invalid email format",
-      });
-      return;
-    }
-
-    try {
-      const availability = await checkUserAvailability({
-        email,
-        excludeUserId: userId,
-      });
-
-      if (!availability.available) {
-        res.status(409).json({
-          success: false,
-          message: availability.message,
-        });
-        return;
-      }
-
-      await sendEmailVerificationCode(email, { codeLength: 6 });
-
-      res.status(200).json({
-        success: true,
-        message: "Verification code sent to your email",
-      });
-    } catch (error: any) {
-      console.error("Error in sendEmailCode:", error);
-      res.status(500).json({
-        success: false,
-        message: "Failed to send verification code. Please try again.",
-      });
-    }
-  },
-);
 
 export const continueWithGoogle = asyncHandler(
   async (req: Request, res: Response) => {
-    const { email, googleId }: GoogleAuthRequestBody = req.body;
+    const { idToken }: GoogleAuthRequestBody = req.body;
 
-    if (!email || !googleId) {
+    if (!idToken) {
       res.status(400).json({
         success: false,
-        message: "Email and Google ID are required",
+        message: "Google ID token is required",
       });
       return;
     }
 
-    if (!isValidEmail(email)) {
-      res.status(400).json({
+    const identity = await verifyGoogleIdToken(idToken);
+
+    if (!identity) {
+      res.status(401).json({
         success: false,
-        message: "Invalid email format",
+        message: "Invalid or expired Google ID token",
       });
       return;
     }
+
+    const { googleId, email, firstName, lastName } = identity;
 
     try {
       let user = await prisma.user.findFirst({
@@ -1246,6 +1447,8 @@ export const continueWithGoogle = asyncHandler(
           data: {
             email,
             googleId,
+            firstName,
+            lastName,
             authProvider: AuthProvider.GOOGLE,
             emailVerifiedAt: new Date(),
           },
@@ -1413,67 +1616,6 @@ export const continueWithApple = asyncHandler(
         success: false,
         message:
           "An error occurred during Apple authentication. Please try again.",
-      });
-    }
-  },
-);
-
-export const verifyEmailCode = asyncHandler(
-  async (req: AuthRequest, res: Response) => {
-    const userId = req.userId;
-    if (!userId) {
-      res.status(401).json({ success: false, message: "Unauthorized" });
-      return;
-    }
-
-    const { email, code } = req.body;
-
-    if (!email || !isValidEmail(email)) {
-      res.status(400).json({
-        success: false,
-        message: "Invalid email format",
-      });
-      return;
-    }
-
-    const availability = await checkUserAvailability({
-      email,
-      excludeUserId: userId,
-    });
-
-    if (!availability.available) {
-      res.status(409).json({
-        success: false,
-        message: availability.message,
-      });
-      return;
-    }
-
-    const result = await validateVerificationCode(email, code, 6);
-
-    if (result.valid === false) {
-      res.status(400).json({ success: false, message: result.message });
-      return;
-    }
-
-    try {
-      await prisma.user.update({
-        where: { id: userId },
-        data: {
-          email: email,
-          emailVerifiedAt: new Date(),
-        },
-      });
-
-      res.status(200).json({
-        success: true,
-        message: "Email verified successfully",
-      });
-    } catch (error: any) {
-      console.error("Error in verifyEmailCode:", error);
-      res.status(500).json({
-        success: false,
-        message: "An internal server error occurred. Please try again.",
       });
     }
   },
