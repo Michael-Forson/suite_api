@@ -12,6 +12,7 @@ import {
 } from "../../../utils/app.utils.js";
 import { isUniqueConstraintError } from "../../../utils/prisma.utils.js";
 import { normalizeOptionalString } from "../../../utils/validation.utils.js";
+import { discardAppIcon, storeAppIcon } from "./app.helpers.js";
 
 export const registerApp = asyncHandler(
   async (req: SuperAdminAuthRequest, res: Response) => {
@@ -21,11 +22,14 @@ export const registerApp = asyncHandler(
       return;
     }
 
+    // Normalized, not just validated: the key is stored lowercased and trimmed,
+    // because it becomes a URL path segment everywhere else.
     const key = appKeyFromValue(req.body.key);
     if (!key) {
       res.status(400).json({
         success: false,
-        message: "App key is required and must be 100 characters or fewer",
+        message:
+          "App key is required, must be 100 characters or fewer, and may contain only lowercase letters, numbers, dot, underscore, colon or hyphen",
       });
       return;
     }
@@ -50,6 +54,18 @@ export const registerApp = asyncHandler(
       return;
     }
 
+    // The icon is stored before the row exists, so a storage failure leaves
+    // nothing behind to reconcile. An orphaned object is the cheaper mistake.
+    //
+    // A body `iconUrl` is stored verbatim: it names an object this API did not
+    // upload, so there is no key to reduce it to, and `publicUrl` hands absolute
+    // values straight back.
+    let iconKey = normalizeOptionalString(req.body.iconUrl) as string | null;
+    if (req.file) {
+      iconKey = await storeAppIcon(req.file, res);
+      if (!iconKey) return;
+    }
+
     let app;
     try {
       app = await prisma.app.create({
@@ -59,7 +75,7 @@ export const registerApp = asyncHandler(
           description: normalizeOptionalString(req.body.description) as
             | string
             | null,
-          iconUrl: normalizeOptionalString(req.body.iconUrl) as string | null,
+          iconKey,
           appUrl: normalizeOptionalString(req.body.appUrl) as string | null,
           status,
         },
@@ -163,12 +179,20 @@ export const updateAppDetails = asyncHandler(async (req, res) => {
     }
     data.name = name;
   }
-  for (const field of ["description", "iconUrl", "appUrl"] as const) {
+  for (const field of ["description", "appUrl"] as const) {
     if (field in req.body) {
       data[field] = normalizeOptionalString(req.body[field]) as string | null;
     }
   }
-  if (!Object.keys(data).length) {
+  // The request field stays `iconUrl` — clients send an absolute URL or null,
+  // never a key, and the column holds whichever of the two it is given.
+  if ("iconUrl" in req.body) {
+    data.iconKey = normalizeOptionalString(req.body.iconUrl) as string | null;
+  }
+  // An uploaded file wins over any `iconUrl` in the body — they are two ways to
+  // say the same thing, and the file is the deliberate one.
+  const hasIconChange = Boolean(req.file) || "iconUrl" in req.body;
+  if (!Object.keys(data).length && !req.file) {
     res.status(400).json({
       success: false,
       message: "Provide at least one app detail to update",
@@ -176,9 +200,19 @@ export const updateAppDetails = asyncHandler(async (req, res) => {
     return;
   }
 
-  if (!(await prisma.app.findUnique({ where: { key }, select: { id: true } }))) {
+  const existing = await prisma.app.findUnique({
+    where: { key },
+    select: { id: true, iconKey: true },
+  });
+  if (!existing) {
     res.status(404).json({ success: false, message: "App not found" });
     return;
+  }
+
+  if (req.file) {
+    const iconKey = await storeAppIcon(req.file, res);
+    if (!iconKey) return;
+    data.iconKey = iconKey;
   }
 
   const app = await prisma.app.update({
@@ -186,6 +220,11 @@ export const updateAppDetails = asyncHandler(async (req, res) => {
     data,
     select: APP_SELECT,
   });
+
+  // Only after the row points somewhere else. Deleting first would leave a live
+  // app pointing at a missing object if the update then failed.
+  if (hasIconChange) await discardAppIcon(existing.iconKey, app.iconKey);
+
   res.status(200).json({
     success: true,
     message: "App details updated successfully",

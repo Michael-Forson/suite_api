@@ -5,6 +5,7 @@ import {
   changeSubscriptionPlanPriceStatus,
   changeSubscriptionPlanStatus,
   createSubscriptionPlan,
+  deleteSubscriptionPlan,
   getSubscriptionPlan,
   listSubscriptionPlans,
   removeSubscriptionPlanApp,
@@ -19,6 +20,7 @@ router.use(superAdminAuthenticate);
 router.get("/plans", listSubscriptionPlans);
 router.post("/plans", createSubscriptionPlan);
 router.get("/plans/:planId", getSubscriptionPlan);
+router.delete("/plans/:planId", deleteSubscriptionPlan);
 router.patch("/plans/:planId/details", updateSubscriptionPlanDetails);
 router.patch("/plans/:planId/status", changeSubscriptionPlanStatus);
 router.post("/plans/:planId/apps", addSubscriptionPlanApp);

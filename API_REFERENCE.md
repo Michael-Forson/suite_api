@@ -554,25 +554,55 @@ Mounted at `/super-admin/api/v1`. Super-admin access and refresh JWTs use
 ```http
 POST /super-admin/api/v1/auth/login
 POST /super-admin/api/v1/auth/refresh
-GET /super-admin/api/v1/auth/me
+GET  /super-admin/api/v1/auth/me
+
+POST /super-admin/api/v1/auth/password/forgot
+GET  /super-admin/api/v1/auth/password/token/:token
+POST /super-admin/api/v1/auth/password/set
 ```
 
 Login accepts `email` and `password`. Refresh accepts `refreshToken`. Protected
 routes require `Authorization: Bearer <superAdminAccessToken>`.
 
+The three `password/*` routes are **public** — they exist for callers with no
+session. `forgot` accepts `email` and always answers the same whether or not the
+account exists, so it cannot be used to enumerate super-admins; an account still
+in `INVITED` is sent a fresh invitation instead of a reset. `token/:token`
+resolves a link without spending it, returning `type`, `email` and `firstName`.
+`set` accepts `token` and `password`, spends the link, and moves an `INVITED`
+account to `ACTIVE`. Invitation links last 72 hours, reset links 1 hour, and
+both are single-use.
+
 ### Manage Super-Admin Accounts
 
 ```http
-GET /super-admin/api/v1/accounts
-POST /super-admin/api/v1/accounts
+GET   /super-admin/api/v1/accounts
+POST  /super-admin/api/v1/accounts
+POST  /super-admin/api/v1/accounts/:superAdminId/resend-invite
+POST  /super-admin/api/v1/accounts/:superAdminId/send-password-reset
 PATCH /super-admin/api/v1/accounts/:superAdminId
 PATCH /super-admin/api/v1/accounts/:superAdminId/status
 ```
 
-Every authenticated super-admin has the same platform access. Accounts support
-`ACTIVE` and `DISABLED` statuses; there is no developer role. Passwords require
-at least 12 characters. A super-admin may change only their own password and
-must provide `currentPassword`.
+**The root super-admin** is whichever account holds the address in
+`SUPER_ADMIN_EMAIL`. It is derived from the environment on every request, never
+stored, and returned as `isRoot` on every serialized super-admin. Only root may
+invite, resend, send reset links, change status, or edit another account; every
+other super-admin has read access to the list and may edit only their own
+profile. Root cannot be disabled by anyone, including itself.
+
+`POST /accounts` **invites** — it accepts `firstName`, `lastName` and `email`,
+and never a password. The account is created as `INVITED` with a null password
+and is mailed a link to set their own; it becomes `ACTIVE` only when they do.
+The response carries `emailSent`, because the account still exists when SMTP
+fails and the fix is to resend. Requires `SUPER_ADMIN_PASSWORD_SETUP_URL`.
+
+Statuses are `ACTIVE`, `DISABLED` and `INVITED`. Only `ACTIVE` and `DISABLED`
+are assignable — `INVITED` is left by setting a password and no other way, and
+the status route rejects a change on an invited account. At least one active
+super-admin must remain. Passwords require at least 12 characters. A super-admin
+may change only their own password and must provide `currentPassword`; root
+mails a reset link rather than setting anyone's password.
 
 ### Manage Apps
 
@@ -584,8 +614,37 @@ PATCH /super-admin/api/v1/apps/:key/details
 PATCH /super-admin/api/v1/apps/:key/status
 ```
 
-Authenticated super-admin accounts can manage apps. New apps default to
-`DISABLED`; app keys are unique and cannot be changed after registration.
+Authenticated super-admin accounts can manage apps — this is platform
+configuration, so it is not restricted to the root super-admin. New apps default
+to `DISABLED`.
+
+App keys are unique, permanent, and normalized on the way in and on lookup:
+trimmed, lowercased, and restricted to `^[a-z0-9][a-z0-9._:-]*$`, 100 characters
+or fewer — the same rule as permission and role keys. The key is a URL path
+segment in every route that touches the app, so `Inventory`, ` inventory ` and
+`inventory` all address the same record, and a key containing `/` or a space is
+rejected with 400 rather than stored unreachable.
+
+`PATCH /:key/details` updates `name`, `description`, `iconUrl` and `appUrl` only;
+sending `key` is a 400 and sending `status` is ignored — status has its own
+route. There is no delete endpoint; deactivation is `status: DISABLED`.
+
+**App icons.** `POST /apps` and `PATCH /:key/details` accept either JSON or
+`multipart/form-data` carrying an `icon` image file, with the remaining fields as
+a JSON string in a `data` field. The image is stored in the public bucket under
+`app-icons/`, so clients never send a URL themselves. Images only, 5 MB maximum —
+a rejected upload is a 400, and a storage failure is a 502. An uploaded file takes
+precedence over any `iconUrl` in the body; sending `iconUrl: null` clears the
+icon. Replacing or clearing deletes the previous object after the row is updated.
+Requires `AWS_ENDPOINT`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` and
+`PUBLIC_BUCKET_NAME`.
+
+Responses always carry `iconUrl`, an absolute URL. The column behind it stores
+only the object key: the endpoint is deployment config, so composing the URL on
+read means adding TLS, moving hosts or putting a CDN in front is an env change
+rather than a rewrite of every row. A value that already carries a scheme —
+an icon registered before uploads existed, or a row predating this change — is
+returned as-is, so both forms keep resolving.
 
 ### Manage App Permissions
 
@@ -773,6 +832,23 @@ Notes:
 - Owners can invite `ADMIN` or `MEMBER` staff.
 - Admins can invite `MEMBER` staff only.
 - Creates a 7-day pending invitation and returns the token/link.
+- The returned `invitationLink` carries both `token` and `organizationId`, since
+  the validate and accept endpoints are scoped to `:organizationId`.
+
+### List Invitations
+
+```http
+GET /user/api/v1/organizations/:organizationId/invites?status=PENDING
+Authorization: Bearer <accessToken>
+```
+
+Notes:
+
+- Owner/admin only.
+- Optional `status` filter: `PENDING`, `ACCEPTED`, `EXPIRED`, `REVOKED`.
+- Flips stale pending invitations to `EXPIRED` before returning, so the list
+  never disagrees with what the accept endpoint would do.
+- Each entry omits the raw `token` and exposes `invitationLink` instead.
 
 ### Send Invitation Email
 

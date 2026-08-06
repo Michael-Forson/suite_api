@@ -151,26 +151,81 @@ export const serializeInvitation = <
     : undefined,
 });
 
-export const buildInvitationAcceptUrl = (token: string) => {
+// The accept link must carry the organization id as well as the token: both the
+// validate and accept endpoints are scoped to /:organizationId, so a frontend
+// handed only a token has no way to know which organization to call.
+export const isValidInvitationStatus = (
+  status: unknown,
+): status is InvitationStatus =>
+  typeof status === "string" &&
+  Object.values(InvitationStatus).includes(status as InvitationStatus);
+
+export const validInvitationStatuses = () =>
+  Object.values(InvitationStatus).join(", ");
+
+// List view of an invitation: the raw token is deliberately dropped and replaced
+// with the shareable accept link. A single token handed back on create/resend is
+// one thing; handing every pending token out in a list is a needless bulk secret.
+export const serializeInvitationSummary = <
+  T extends {
+    id: string;
+    organizationId: string;
+    invitedBy: string;
+    token: string;
+    inviter?: {
+      id: string;
+      firstName: string | null;
+      lastName: string | null;
+      email: string | null;
+    };
+  },
+>(
+  invitation: T,
+) => {
+  const { token, ...rest } = serializeInvitation(invitation);
+  void token;
+
+  return {
+    ...rest,
+    invitationLink: buildInvitationAcceptUrl(
+      invitation.token,
+      invitation.organizationId.toString(),
+    ),
+  };
+};
+
+export const buildInvitationAcceptUrl = (
+  token: string,
+  organizationId: string,
+) => {
   const baseUrl = process.env.INVITATION_ACCEPT_URL;
   if (!baseUrl) return null;
 
   if (baseUrl.includes("{{token}}")) {
-    return baseUrl.replace(/{{token}}/g, encodeURIComponent(token));
+    return baseUrl
+      .replace(/{{token}}/g, encodeURIComponent(token))
+      .replace(/{{organizationId}}/g, encodeURIComponent(organizationId));
   }
 
   try {
     const url = new URL(baseUrl);
     url.searchParams.set("token", token);
+    url.searchParams.set("organizationId", organizationId);
     return url.toString();
   } catch {
     const separator = baseUrl.includes("?") ? "&" : "?";
-    return `${baseUrl}${separator}token=${encodeURIComponent(token)}`;
+    return `${baseUrl}${separator}token=${encodeURIComponent(
+      token,
+    )}&organizationId=${encodeURIComponent(organizationId)}`;
   }
 };
 
-export const requireInvitationLink = (token: string, res: Response) => {
-  const invitationLink = buildInvitationAcceptUrl(token);
+export const requireInvitationLink = (
+  token: string,
+  organizationId: string,
+  res: Response,
+) => {
+  const invitationLink = buildInvitationAcceptUrl(token, organizationId);
   if (!invitationLink) {
     res.status(500).json({
       success: false,

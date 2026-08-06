@@ -11,6 +11,7 @@ import { stripeService } from "../../../services/stripe/stripe.service.js";
 import { StripeSubscriptionObject } from "../../../services/stripe/stripe.types.js";
 import { getCustomerPaymentEmail } from "../../../utils/paymentEmail.js";
 import { parseId } from "../../../utils/parseId.js";
+import { publicUrl } from "../../../utils/s3.js";
 import {
   normalizeStripeSubscriptionStatus,
   subscriptionHasAccess,
@@ -57,8 +58,7 @@ const serializeApp = (app: any) => ({
   key: app.key,
   name: app.name,
   description: app.description,
-  iconUrl: app.iconUrl,
-  appUrl: app.appUrl,
+  iconUrl: publicUrl(app.iconKey),
 });
 
 type CheckoutSnapshot = {

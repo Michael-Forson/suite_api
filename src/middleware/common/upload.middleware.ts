@@ -22,6 +22,35 @@ export const upload = multer({
 });
 
 /**
+ * `upload.single`, with multer's rejections turned into 400s.
+ *
+ * Left to itself multer hands a rejected upload to `next(err)`, and the global
+ * handler reports "Only image files are allowed" as a 500 — a client mistake
+ * dressed up as a server fault.
+ */
+export function singleImage(field: string) {
+  const handler = upload.single(field);
+
+  return (req: Request, res: Response, next: NextFunction) => {
+    handler(req, res, (error: unknown) => {
+      if (!error) {
+        next();
+        return;
+      }
+
+      const message =
+        error instanceof multer.MulterError && error.code === "LIMIT_FILE_SIZE"
+          ? "Image must be 5 MB or smaller."
+          : error instanceof Error
+            ? error.message
+            : "Invalid upload.";
+
+      res.status(400).json({ success: false, message });
+    });
+  };
+}
+
+/**
  * Middleware that runs AFTER multer.
  *
  * When the client sends multipart/form-data, structured fields are sent as a

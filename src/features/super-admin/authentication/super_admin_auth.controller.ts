@@ -34,8 +34,12 @@ export const loginSuperAdmin = asyncHandler(async (req, res) => {
     select: { ...SUPER_ADMIN_SELECT, password: true },
   });
 
+  // A null password means the invitation was never accepted. Same 401 as a wrong
+  // password — the response must not say which accounts exist or what state they
+  // are in. `POST /auth/password/forgot` re-sends the invite link.
   if (
     !superAdmin ||
+    !superAdmin.password ||
     !(await comparePassword(password, superAdmin.password))
   ) {
     res.status(401).json({

@@ -115,6 +115,15 @@ enum MemberAppRoleStatus {
 enum SuperAdminStatus {
   ACTIVE
   DISABLED
+  // Invited but has not set a password yet. Login and superAdminAuthenticate
+  // both require ACTIVE, so an invited account cannot sign in or hold a session,
+  // and it does not count toward the "at least one active super-admin" rule.
+  INVITED
+}
+
+enum SuperAdminTokenType {
+  INVITE
+  PASSWORD_RESET
 }
 
 enum InvitationStatus {
@@ -129,14 +138,38 @@ model SuperAdmin {
   firstName   String           @map("first_name") @db.VarChar(100)
   lastName    String           @map("last_name") @db.VarChar(100)
   email       String           @unique @db.VarChar(255)
-  password    String           @db.VarChar(255)
+  // Null between the invitation and the moment they set their own password.
+  // Nobody is ever handed a password they did not choose.
+  password    String?          @db.VarChar(255)
   status      SuperAdminStatus @default(ACTIVE)
   lastLoginAt DateTime?        @map("last_login_at")
   createdAt   DateTime         @default(now()) @map("created_at")
   updatedAt   DateTime         @updatedAt @map("updated_at")
 
+  tokens SuperAdminToken[]
+
   @@index([status])
   @@map("super_admins")
+}
+
+/// One row per outstanding invite or password-reset link. Both are the same
+/// thing — a single-use, expiring capability to set a password — so they share a
+/// table and differ by `type`, which is what decides the email and the wording
+/// on the page.
+model SuperAdminToken {
+  id           String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  superAdminId String              @map("super_admin_id") @db.Uuid
+  type         SuperAdminTokenType
+  token        String              @unique @db.VarChar(255)
+  expiresAt    DateTime            @map("expires_at")
+  usedAt       DateTime?           @map("used_at")
+  createdAt    DateTime            @default(now()) @map("created_at")
+
+  superAdmin SuperAdmin @relation(fields: [superAdminId], references: [id], onDelete: Cascade)
+
+  @@index([superAdminId])
+  @@index([expiresAt])
+  @@map("super_admin_tokens")
 }
 
 model User {
@@ -236,7 +269,10 @@ model App {
   name        String    @db.VarChar(150)
   key         String    @unique @db.VarChar(100)
   description String?   @db.Text
-  iconUrl     String?   @map("icon_url") @db.VarChar(500)
+  /// Object key in the public bucket, not a URL — the endpoint is deployment
+  /// config, so it is composed at read time by `publicUrl`. Legacy rows may
+  /// still hold an absolute URL; that helper passes those through untouched.
+  iconKey     String?   @map("icon_key") @db.VarChar(500)
   appUrl      String?   @map("app_url") @db.VarChar(500)
   status      AppStatus @default(DISABLED)
   createdAt   DateTime  @default(now()) @map("created_at")
