@@ -1,5 +1,12 @@
 import { Response } from "express";
 import { AuthRequest } from "../../../middleware/users/auth.middleware.js";
+import { publicUrl } from "../../../utils/s3.js";
+
+/** The key is an internal detail; callers get the resolved `iconUrl` instead. */
+const omitIconKey = <T extends { iconKey?: string | null }>({
+  iconKey: _iconKey,
+  ...rest
+}: T) => rest;
 
 export const ORGANIZATION_APP_SELECT = {
   id: true,
@@ -19,8 +26,7 @@ export const ORGANIZATION_APP_SELECT = {
       name: true,
       key: true,
       description: true,
-      iconUrl: true,
-      appUrl: true,
+      iconKey: true,
       status: true,
     },
   },
@@ -71,6 +77,7 @@ export const serializeOrganizationApp = <
     disabledBy: string | null;
     app?: {
       id: string;
+      iconKey?: string | null;
     };
     enabler?: Parameters<typeof serializeUserSummary>[0];
     disabler?: Parameters<typeof serializeUserSummary>[0];
@@ -86,8 +93,9 @@ export const serializeOrganizationApp = <
   disabledBy: organizationApp.disabledBy?.toString() ?? null,
   app: organizationApp.app
     ? {
-        ...organizationApp.app,
+        ...omitIconKey(organizationApp.app),
         id: organizationApp.app.id.toString(),
+        iconUrl: publicUrl(organizationApp.app.iconKey),
       }
     : undefined,
   enabler: serializeUserSummary(organizationApp.enabler ?? null),

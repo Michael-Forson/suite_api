@@ -160,6 +160,38 @@ export const changeSubscriptionPlanStatus = asyncHandler(async (req, res) => {
   });
 });
 
+/**
+ * Removing a plan from the catalogue entirely. Its included apps and prices go
+ * with it — both cascade — but an organisation's subscription does not: the FK
+ * is `onDelete: Restrict`, so the count below is what turns a raw P2003 into an
+ * answer the console can show. Deactivating is the reversible alternative, and
+ * the message says so.
+ */
+export const deleteSubscriptionPlan = asyncHandler(async (req, res) => {
+  const plan = await findSubscriptionPlan(req.params.planId, res);
+  if (!plan) return;
+
+  const subscriptionCount = await prisma.organizationSubscription.count({
+    where: { planId: plan.id },
+  });
+  if (subscriptionCount) {
+    res.status(409).json({
+      success: false,
+      message:
+        "Cannot delete a plan that organisations are subscribed to. Deactivate it instead.",
+    });
+    return;
+  }
+
+  await prisma.subscriptionPlan.delete({ where: { id: plan.id } });
+
+  // No `data`: every other handler returns the plan because one still exists.
+  res.status(200).json({
+    success: true,
+    message: "Subscription plan deleted successfully",
+  });
+});
+
 export const addSubscriptionPlanApp = asyncHandler(async (req, res) => {
   const plan = await findSubscriptionPlan(req.params.planId, res);
   if (!plan) return;

@@ -5,7 +5,6 @@ export interface RegisterAppRequestBody {
   key?: unknown;
   description?: unknown;
   iconUrl?: unknown;
-  appUrl?: unknown;
   status?: unknown;
 }
 
@@ -13,7 +12,6 @@ export interface UpdateAppDetailsRequestBody {
   name?: unknown;
   description?: unknown;
   iconUrl?: unknown;
-  appUrl?: unknown;
 }
 
 export interface ChangeAppStatusRequestBody {

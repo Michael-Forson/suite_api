@@ -76,12 +76,13 @@ Create a local `.env` file in `starter_api/`. Do not commit real secrets.
 | `MAIL_USERNAME` | Yes for email | SMTP username. |
 | `MAIL_PASSWORD` | Yes for email | SMTP password. |
 | `MAIL_FROM_ADDRESS` | Yes for email | Email sender address. |
-| `INVITATION_ACCEPT_URL` | Yes for invitation email | Frontend invitation acceptance URL. The API appends `token`, or replaces `{{token}}` if present. |
-| `MINIO_ENDPOINT` | Yes for S3 helpers | S3/MinIO endpoint host. |
-| `MINIO_ACCESS_KEY` | Yes for S3 helpers | S3/MinIO access key. |
-| `MINIO_SECRET_KEY` | Yes for S3 helpers | S3/MinIO secret key. |
-| `MINIO_BUCKET_NAME` | Yes for S3 helpers | Public bucket name. |
-| `MINIO_PRIVATE_BUCKET_NAME` | Yes for S3 helpers | Private bucket name. |
+| `INVITATION_ACCEPT_URL` | Yes for invitation email | Frontend invitation acceptance URL. The API appends `token` and `organizationId`, or replaces `{{token}}` / `{{organizationId}}` if present. Both are required — the validate and accept endpoints are scoped to `:organizationId`. |
+| `AWS_ENDPOINT` | Yes for S3 helpers | S3-compatible endpoint (RustFS in this deployment). Full URL including scheme and port (`http://storage.example.com:9000`), or a bare host to assume `https`. |
+| `AWS_ACCESS_KEY_ID` | Yes for S3 helpers | Storage access key. |
+| `AWS_SECRET_ACCESS_KEY` | Yes for S3 helpers | Storage secret key. |
+| `AWS_REGION` | No | SigV4 signing region. Defaults to `us-east-1`; ignored by most self-hosted servers. |
+| `PUBLIC_BUCKET_NAME` | Yes for public uploads | Bucket for anonymously readable files (avatars, logos, app icons). Its URLs are persisted, so the bucket must grant anonymous read. |
+| `PRIVATE_BUCKET_NAME` | Yes for private uploads | Bucket for files reachable only through pre-signed URLs. Must **not** grant anonymous read. |
 
 ## Database And Prisma
 

@@ -5,6 +5,7 @@ import {
   AppStatus,
   BillingInterval,
   BillingProvider,
+  SubscriptionStatus,
 } from "../../../generated/prisma/enums.js";
 import { prisma } from "../../../prisma.js";
 import { authHeader, superAdminAuthHeader } from "../../../test-utils/auth.js";
@@ -228,6 +229,78 @@ describe("super-admin subscription plan management", () => {
       .send({ isActive: false });
     expect(statusResponse.status).toBe(200);
     expect(statusResponse.body.data.plan.prices[0].isActive).toBe(false);
+  });
+
+  it("deletes a plan and cascades its apps and prices", async () => {
+    const superAdmin = await createTestSuperAdmin();
+    const invoicing = await createTestApp({
+      key: "invoicing",
+      name: "Invoicing",
+      status: AppStatus.ACTIVE,
+    });
+    const plan = await createTestSubscriptionPlan({
+      name: "Starter",
+      includedAppIds: [invoicing.id],
+    });
+    await createTestSubscriptionPlanPrice({
+      planId: plan.id,
+      providerPriceId: "price_starter_month",
+    });
+
+    const response = await request(app)
+      .delete(`/super-admin/api/v1/subscriptions/plans/${plan.id}`)
+      .set("Authorization", superAdminAuthHeader(superAdmin.id));
+    expect(response.status).toBe(200);
+    expect(response.body.success).toBe(true);
+
+    expect(await prisma.subscriptionPlan.count()).toBe(0);
+    expect(await prisma.subscriptionPlanApp.count()).toBe(0);
+    expect(await prisma.subscriptionPlanPrice.count()).toBe(0);
+    // The app itself is a separate registry entry — only its membership went.
+    expect(await prisma.app.count({ where: { id: invoicing.id } })).toBe(1);
+  });
+
+  it("rejects deleting a plan an organisation is subscribed to", async () => {
+    const superAdmin = await createTestSuperAdmin();
+    const { organization } = await createTestOrganization();
+    const plan = await createTestSubscriptionPlan({ name: "Starter" });
+    await prisma.organizationSubscription.create({
+      data: {
+        organizationId: organization.id,
+        planId: plan.id,
+        provider: BillingProvider.STRIPE,
+        billingInterval: BillingInterval.MONTH,
+        status: SubscriptionStatus.ACTIVE,
+      },
+    });
+
+    const response = await request(app)
+      .delete(`/super-admin/api/v1/subscriptions/plans/${plan.id}`)
+      .set("Authorization", superAdminAuthHeader(superAdmin.id));
+    expect(response.status).toBe(409);
+    expect(response.body.message).toMatch(/Deactivate it instead/);
+    expect(await prisma.subscriptionPlan.count()).toBe(1);
+  });
+
+  it("rejects deleting an unknown or malformed plan id", async () => {
+    const superAdmin = await createTestSuperAdmin();
+
+    const unknownResponse = await request(app)
+      .delete(
+        "/super-admin/api/v1/subscriptions/plans/11111111-1111-4111-8111-111111111111",
+      )
+      .set("Authorization", superAdminAuthHeader(superAdmin.id));
+    expect(unknownResponse.status).toBe(404);
+
+    const malformedResponse = await request(app)
+      .delete("/super-admin/api/v1/subscriptions/plans/not-a-uuid")
+      .set("Authorization", superAdminAuthHeader(superAdmin.id));
+    expect(malformedResponse.status).toBe(400);
+
+    const unauthenticatedResponse = await request(app).delete(
+      "/super-admin/api/v1/subscriptions/plans/not-a-uuid",
+    );
+    expect(unauthenticatedResponse.status).toBe(401);
   });
 
   it("customer listing and checkout reflect admin-managed plans and prices", async () => {

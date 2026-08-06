@@ -4,6 +4,7 @@ import {
   acceptInvitation,
   createStaffInvitation,
   expireOldInvitations,
+  listOrganizationInvitations,
   resendInvitation,
   revokeInvitation,
   sendInvitationEmail,
@@ -13,6 +14,7 @@ import {
 const router = Router();
 
 router.post("/:organizationId/invites", authenticate, createStaffInvitation);
+router.get("/:organizationId/invites", authenticate, listOrganizationInvitations);
 router.get("/:organizationId/invites/validate/:token", validateInvitationToken);
 router.post("/:organizationId/invites/accept", authenticate, acceptInvitation);
 router.patch(

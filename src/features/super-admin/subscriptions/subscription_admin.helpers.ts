@@ -6,6 +6,7 @@ import {
 import { prisma } from "../../../prisma.js";
 import { appKeyFromValue } from "../../../utils/app.utils.js";
 import { parseId } from "../../../utils/parseId.js";
+import { publicUrl } from "../../../utils/s3.js";
 
 export const normalizePlanId = (value: unknown) =>
   typeof value === "string" ? parseId(value) : null;
@@ -62,8 +63,7 @@ export const serializeSubscriptionPlan = (plan: any) => ({
     key: app.key,
     name: app.name,
     description: app.description,
-    iconUrl: app.iconUrl,
-    appUrl: app.appUrl,
+    iconUrl: publicUrl(app.iconKey),
     status: app.status,
   })),
   prices: (plan.prices || []).map((price: any) => ({

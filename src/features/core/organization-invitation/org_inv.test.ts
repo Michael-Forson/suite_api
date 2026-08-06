@@ -319,4 +319,109 @@ describe("organization invitation endpoints", () => {
       prisma.organizationInvitation.findUnique({ where: { id: activePending.id } }),
     ).resolves.toMatchObject({ status: InvitationStatus.PENDING });
   });
+
+  it("lists invitations for owners and admins, filters by status, and hides raw tokens", async () => {
+    const { organization, owner } = await createTestOrganization();
+    const { user: admin } = await createTestMember({
+      organizationId: organization.id,
+      organizationRole: OrganizationRole.ADMIN,
+    });
+    const pendingInvitation = await createTestInvitation({
+      organizationId: organization.id,
+      invitedBy: owner.id,
+      email: "pending-listed@example.test",
+    });
+    await createTestInvitation({
+      organizationId: organization.id,
+      invitedBy: owner.id,
+      email: "revoked-listed@example.test",
+      status: InvitationStatus.REVOKED,
+    });
+
+    const listResponse = await request(app)
+      .get(`/user/api/v1/organizations/${organization.id}/invites`)
+      .set("Authorization", authHeader(owner.id));
+
+    expect(listResponse.status).toBe(200);
+    expect(listResponse.body.data.invitations).toHaveLength(2);
+
+    const listed = listResponse.body.data.invitations.find(
+      (invitation: { email: string }) => invitation.email === "pending-listed@example.test",
+    );
+    expect(listed.token).toBeUndefined();
+    expect(listed.invitationLink).toContain(`token=${pendingInvitation.token}`);
+    expect(listed.invitationLink).toContain(`organizationId=${organization.id}`);
+
+    const adminResponse = await request(app)
+      .get(`/user/api/v1/organizations/${organization.id}/invites`)
+      .set("Authorization", authHeader(admin.id));
+    expect(adminResponse.status).toBe(200);
+
+    const filteredResponse = await request(app)
+      .get(`/user/api/v1/organizations/${organization.id}/invites?status=REVOKED`)
+      .set("Authorization", authHeader(admin.id));
+
+    expect(filteredResponse.status).toBe(200);
+    expect(filteredResponse.body.data.invitations).toHaveLength(1);
+    expect(filteredResponse.body.data.invitations[0].email).toBe(
+      "revoked-listed@example.test",
+    );
+
+    const invalidStatusResponse = await request(app)
+      .get(`/user/api/v1/organizations/${organization.id}/invites?status=NOPE`)
+      .set("Authorization", authHeader(owner.id));
+    expect(invalidStatusResponse.status).toBe(400);
+  });
+
+  it("marks stale pending invitations expired when listing", async () => {
+    const { organization, owner } = await createTestOrganization();
+    const staleInvitation = await createTestInvitation({
+      organizationId: organization.id,
+      invitedBy: owner.id,
+      expiresAt: new Date(Date.now() - 1000),
+    });
+
+    const response = await request(app)
+      .get(`/user/api/v1/organizations/${organization.id}/invites`)
+      .set("Authorization", authHeader(owner.id));
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.invitations[0].status).toBe("EXPIRED");
+    await expect(
+      prisma.organizationInvitation.findUnique({ where: { id: staleInvitation.id } }),
+    ).resolves.toMatchObject({ status: InvitationStatus.EXPIRED });
+  });
+
+  it("blocks plain members from listing invitations", async () => {
+    const { organization } = await createTestOrganization();
+    const { user: member } = await createTestMember({
+      organizationId: organization.id,
+      organizationRole: OrganizationRole.MEMBER,
+    });
+
+    const response = await request(app)
+      .get(`/user/api/v1/organizations/${organization.id}/invites`)
+      .set("Authorization", authHeader(member.id));
+
+    expect(response.status).toBe(403);
+  });
+
+  it("includes the organization id in the invitation accept link", async () => {
+    const { organization, owner } = await createTestOrganization();
+
+    const createResponse = await request(app)
+      .post(`/user/api/v1/organizations/${organization.id}/invites`)
+      .set("Authorization", authHeader(owner.id))
+      .send({ email: "link-target@example.test", organizationRole: "MEMBER" });
+
+    expect(createResponse.status).toBe(201);
+
+    // Both the validate and accept endpoints are scoped to /:organizationId, so
+    // the emailed link is unusable without the organization id alongside the token.
+    const link = new URL(createResponse.body.data.invitationLink);
+    expect(link.searchParams.get("organizationId")).toBe(organization.id);
+    expect(link.searchParams.get("token")).toBe(
+      createResponse.body.data.invitation.token,
+    );
+  });
 });

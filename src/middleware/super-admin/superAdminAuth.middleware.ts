@@ -2,6 +2,7 @@ import { NextFunction, Request, Response } from "express";
 import { SuperAdminStatus } from "../../generated/prisma/enums.js";
 import { prisma } from "../../prisma.js";
 import { parseId } from "../../utils/parseId.js";
+import { isRootSuperAdminEmail } from "../../utils/rootSuperAdmin.js";
 import { verifyAccessToken } from "../../utils/tokens.js";
 
 export interface SuperAdminContext {
@@ -15,6 +16,30 @@ export interface SuperAdminAuthRequest extends Request {
   superAdminId?: string;
   superAdmin?: SuperAdminContext;
 }
+
+/**
+ * Gate for managing other super-admins: inviting, editing someone else,
+ * disabling, and mailing reset links are the root account's alone.
+ *
+ * Runs after `superAdminAuthenticate`, which is what puts the email on the
+ * request — root-ness is re-derived from the database record on every call, so a
+ * stale token cannot carry it.
+ */
+export const requireRootSuperAdmin = (
+  req: SuperAdminAuthRequest,
+  res: Response,
+  next: NextFunction,
+) => {
+  if (!isRootSuperAdminEmail(req.superAdmin?.email)) {
+    res.status(403).json({
+      success: false,
+      message: "Only the root super-admin can manage super-admin accounts.",
+    });
+    return;
+  }
+
+  next();
+};
 
 export const superAdminAuthenticate = async (
   req: SuperAdminAuthRequest,

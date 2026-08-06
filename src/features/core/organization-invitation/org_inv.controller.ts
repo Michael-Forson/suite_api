@@ -26,11 +26,14 @@ import {
   INVITATION_SELECT,
   invitableOrganizationRoles,
   isInvitableOrganizationRole,
+  isValidInvitationStatus,
   normalizeEmail,
   requireInvitationLink,
   sendOrganizationInvitationEmail,
   serializeInvitation,
+  serializeInvitationSummary,
   tokenFromParams,
+  validInvitationStatuses,
 } from "./org_inv.helpers.js";
 import {
   AcceptInvitationRequestBody,
@@ -187,7 +190,53 @@ export const createStaffInvitation = asyncHandler(
       message: "Organization invitation created successfully",
       data: {
         invitation: serializeInvitation(invitation),
-        invitationLink: buildInvitationAcceptUrl(invitation.token),
+        invitationLink: buildInvitationAcceptUrl(
+          invitation.token,
+          invitation.organizationId,
+        ),
+      },
+    });
+  },
+);
+
+export const listOrganizationInvitations = asyncHandler(
+  async (req: AuthRequest, res: Response) => {
+    const context = await ensureInvitationCanBeManaged(req, res);
+    if (!context) return;
+
+    const { status } = req.query;
+    if (status !== undefined && !isValidInvitationStatus(status)) {
+      res.status(400).json({
+        success: false,
+        message: `Status must be one of: ${validInvitationStatuses()}`,
+      });
+      return;
+    }
+
+    // Flip stale pending invitations first so the list never shows something as
+    // pending that the accept endpoint would reject as expired.
+    await prisma.organizationInvitation.updateMany({
+      where: {
+        organizationId: context.organizationId,
+        status: InvitationStatus.PENDING,
+        expiresAt: { lte: new Date() },
+      },
+      data: { status: InvitationStatus.EXPIRED },
+    });
+
+    const invitations = await prisma.organizationInvitation.findMany({
+      where: {
+        organizationId: context.organizationId,
+        ...(status ? { status } : {}),
+      },
+      orderBy: { createdAt: "desc" },
+      select: INVITATION_SELECT,
+    });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        invitations: invitations.map(serializeInvitationSummary),
       },
     });
   },
@@ -229,7 +278,11 @@ export const sendInvitationEmail = asyncHandler(
       return;
     }
 
-    const invitationLink = requireInvitationLink(invitation.token, res);
+    const invitationLink = requireInvitationLink(
+      invitation.token,
+      invitation.organizationId,
+      res,
+    );
     if (!invitationLink) return;
 
     await sendOrganizationInvitationEmail(invitation, invitationLink);
@@ -577,7 +630,11 @@ export const resendInvitation = asyncHandler(
       select: INVITATION_SELECT,
     });
 
-    const invitationLink = requireInvitationLink(updatedInvitation.token, res);
+    const invitationLink = requireInvitationLink(
+      updatedInvitation.token,
+      updatedInvitation.organizationId,
+      res,
+    );
     if (!invitationLink) return;
 
     await sendOrganizationInvitationEmail(updatedInvitation, invitationLink);

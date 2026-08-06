@@ -141,5 +141,15 @@ export const emailTemplatesArray: EmailTemplate[] = [
     HtmlPart:
       '<html><body><h2>Set up your admin account</h2><p>Hi {{name}},</p><p>You have been invited to the {{appName}} admin dashboard.</p><p><a href="{{setupLink}}">Set your password</a></p><p>This link expires in {{expiresInHours}} hours.</p></body></html>',
   },
+  {
+    // Link-based, unlike App_Password_Reset, which sends users a short code.
+    // Admins reset from a browser, where a one-click link is the safer flow.
+    TemplateName: "Admin_Password_Reset",
+    SubjectPart: "Reset your {{appName}} admin password",
+    TextPart:
+      "Hi {{name}}, choose a new password for your {{appName}} admin account here: {{resetLink}}. This link expires in {{expiresInHours}} hour(s) and can only be used once. If you did not request this, ignore this email — your password will not change.",
+    HtmlPart:
+      '<html><body><h2>Reset your admin password</h2><p>Hi {{name}},</p><p><a href="{{resetLink}}">Choose a new password</a></p><p>This link expires in {{expiresInHours}} hour(s) and can only be used once.</p><p>If you did not request this, you can ignore this email — your password will not change.</p></body></html>',
+  },
 ];
 
