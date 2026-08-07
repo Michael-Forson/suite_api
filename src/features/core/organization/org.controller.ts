@@ -2,18 +2,22 @@ import { Response } from "express";
 import asyncHandler from "express-async-handler";
 import {
   AccountStatus,
+  BranchStatus,
   MemberStatus,
   OrganizationRole,
 } from "../../../generated/prisma/enums.js";
 import { AuthRequest } from "../../../middleware/users/auth.middleware.js";
 import { prisma } from "../../../prisma.js";
 import {
+  BRANCH_SELECT,
   CREATE_OPTIONAL_STRING_FIELDS,
+  DEFAULT_BRANCH_CODE,
   ensureUniqueSlug,
   isValidOrganizationStatus,
   MAX_CREATE_SLUG_ATTEMPTS,
   ORGANIZATION_PROFILE_FIELDS,
   ORGANIZATION_SELECT,
+  serializeBranch,
   serializeOrganization,
   slugify,
   validateContactFields,
@@ -154,6 +158,22 @@ export const createOrganization = asyncHandler(
             },
           });
 
+          // Every organization has at least one branch, created here so the
+          // invariant cannot be violated — apps are then free to assume
+          // `branchId` always resolves. A single-location business keeps just
+          // this one and never sees the concept in its UI.
+          await tx.branch.create({
+            data: {
+              organizationId: created.id,
+              name: normalizedName,
+              code: DEFAULT_BRANCH_CODE,
+              location: normalizeOptionalString(address) as string | null,
+              isDefault: true,
+              status: BranchStatus.ACTIVE,
+              createdBy: userId,
+            },
+          });
+
           return created;
         });
         break;
@@ -174,6 +194,33 @@ export const createOrganization = asyncHandler(
       success: true,
       message: "Organization created successfully",
       data: { organization: serializeOrganization(organization) },
+    });
+  },
+);
+
+/// Read-only for now. Branch management (create, rename, archive, set default)
+/// waits until an organization actually has a second location — see the branch
+/// foundation plan. What exists today is the list every app reads from.
+export const listOrganizationBranches = asyncHandler(
+  async (req: OrganizationAccessRequest, res: Response) => {
+    const organizationId = req.organizationAccess?.organizationId;
+    if (!organizationId) {
+      res.status(500).json({
+        success: false,
+        message: "Organization access middleware is required.",
+      });
+      return;
+    }
+
+    const branches = await prisma.branch.findMany({
+      where: { organizationId, deletedAt: null },
+      select: BRANCH_SELECT,
+      orderBy: [{ isDefault: "desc" }, { name: "asc" }],
+    });
+
+    res.status(200).json({
+      success: true,
+      data: { branches: branches.map(serializeBranch) },
     });
   },
 );

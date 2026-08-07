@@ -64,6 +64,11 @@ enum AppStatus {
   DISABLED
 }
 
+enum BranchStatus {
+  ACTIVE
+  INACTIVE
+}
+
 enum OrganizationAppStatus {
   ACTIVE
   DISABLED
@@ -211,21 +216,27 @@ model User {
 }
 
 model Organization {
-  id           String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name         String        @db.VarChar(150)
-  slug         String        @unique @db.VarChar(150)
-  ownerId      String        @map("owner_id") @db.Uuid
-  businessType String?       @map("business_type") @db.VarChar(100)
-  industry     String?       @db.VarChar(100)
-  email        String?       @db.VarChar(255)
-  phone        String?       @db.VarChar(20)
-  logoUrl      String?       @map("logo_url") @db.VarChar(500)
-  country      String?       @db.VarChar(100)
-  city         String?       @db.VarChar(100)
-  address      String?       @db.Text
-  status       AccountStatus @default(ACTIVE)
-  createdAt    DateTime      @default(now()) @map("created_at")
-  updatedAt    DateTime      @updatedAt @map("updated_at")
+  id                    String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name                  String        @db.VarChar(150)
+  slug                  String        @unique @db.VarChar(150)
+  ownerId               String        @map("owner_id") @db.Uuid
+  businessType          String?       @map("business_type") @db.VarChar(100)
+  industry              String?       @db.VarChar(100)
+  email                 String?       @db.VarChar(255)
+  phone                 String?       @db.VarChar(20)
+  logoUrl               String?       @map("logo_url") @db.VarChar(500)
+  country               String?       @db.VarChar(100)
+  city                  String?       @db.VarChar(100)
+  address               String?       @db.Text
+  status                AccountStatus @default(ACTIVE)
+  /// What this org calls a `Branch` in its UI — "Branch", "Store", "Warehouse",
+  /// "Location", or anything else. Org-wide vocabulary, not per-app: Inventory,
+  /// POS and Attendance all read it so they agree on the term. The schema never
+  /// changes regardless of the label chosen.
+  locationLabelSingular String        @default("Branch") @map("location_label_singular") @db.VarChar(50)
+  locationLabelPlural   String        @default("Branches") @map("location_label_plural") @db.VarChar(50)
+  createdAt             DateTime      @default(now()) @map("created_at")
+  updatedAt             DateTime      @updatedAt @map("updated_at")
 
   owner            User                          @relation("OrganizationOwner", fields: [ownerId], references: [id], onDelete: Restrict)
   members          OrganizationMember[]
@@ -233,6 +244,7 @@ model Organization {
   invitations      OrganizationInvitation[]
   billingCustomers OrganizationBillingCustomer[]
   subscription     OrganizationSubscription?
+  branches         Branch[]
 
   @@index([ownerId])
   @@index([status])
@@ -262,6 +274,45 @@ model OrganizationMember {
   @@index([status])
   @@index([invitedBy])
   @@map("organization_members")
+}
+
+/// A physical place the business operates from. Core, not app-level: POS needs it
+/// for where a sale rang up, Inventory for where stock sits, Attendance for where
+/// staff clock in. One shared list, one id, no app owns it.
+///
+/// Every organization has at least one — a default branch is created in the same
+/// transaction as the organization itself (see `createOrganization`), so no app
+/// ever has to handle an org with zero branches. Single-branch orgs simply never
+/// see the concept in their UI.
+///
+/// Never hard-deleted. Other apps' databases hold `branchId` as a logical
+/// reference with no foreign key (you cannot FK across databases), so the
+/// `deletedAt` soft delete is the only thing keeping those references valid.
+model Branch {
+  id             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String       @map("organization_id") @db.Uuid
+  name           String       @db.VarChar(150)
+  code           String       @db.VarChar(50)
+  /// Address / geographic location text.
+  location       String?      @db.Text
+  isDefault      Boolean      @default(false) @map("is_default")
+  status         BranchStatus @default(ACTIVE)
+  createdBy      String?      @map("created_by") @db.Uuid
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+  deletedAt      DateTime?    @map("deleted_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  // Exactly one default per org is enforced in application code — Prisma cannot
+  // express the partial unique index this really wants:
+  //   CREATE UNIQUE INDEX ... ON branches (organization_id)
+  //     WHERE is_default AND deleted_at IS NULL;
+  @@unique([organizationId, code])
+  @@index([organizationId])
+  @@index([status])
+  @@index([deletedAt])
+  @@map("branches")
 }
 
 model App {

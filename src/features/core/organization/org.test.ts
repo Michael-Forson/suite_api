@@ -2,6 +2,7 @@
 import request from "supertest";
 import {
   AccountStatus,
+  BranchStatus,
   MemberStatus,
   OrganizationRole,
 } from "../../../generated/prisma/enums.js";
@@ -177,6 +178,91 @@ describe("organization endpoints", () => {
       .set("Authorization", authHeader(outsider.id));
 
     expect(outsiderResponse.status).toBe(403);
+  });
+
+  it("creates exactly one default branch with a new organization", async () => {
+    const user = await createTestUser();
+
+    const response = await request(app)
+      .post("/user/api/v1/organizations")
+      .set("Authorization", authHeader(user.id))
+      .send({ name: "Single Shop", address: "12 Market Road" });
+
+    expect(response.status).toBe(201);
+    // Labels are org-wide vocabulary and ship on every organization response.
+    expect(response.body.data.organization).toMatchObject({
+      locationLabelSingular: "Branch",
+      locationLabelPlural: "Branches",
+    });
+
+    const branches = await prisma.branch.findMany({
+      where: { organizationId: response.body.data.organization.id },
+    });
+
+    expect(branches).toHaveLength(1);
+    expect(branches[0]).toMatchObject({
+      name: "Single Shop",
+      code: "MAIN",
+      location: "12 Market Road",
+      isDefault: true,
+      status: BranchStatus.ACTIVE,
+      createdBy: user.id,
+    });
+  });
+
+  it("lists branches for members and rejects non-members", async () => {
+    const { organization, defaultBranch } = await createTestOrganization();
+    const { user: member } = await createTestMember({
+      organizationId: organization.id,
+    });
+    const outsider = await createTestUser();
+
+    const memberResponse = await request(app)
+      .get(`/user/api/v1/organizations/${organization.id}/branches`)
+      .set("Authorization", authHeader(member.id));
+
+    expect(memberResponse.status).toBe(200);
+    expect(memberResponse.body.data.branches).toHaveLength(1);
+    expect(memberResponse.body.data.branches[0]).toMatchObject({
+      id: defaultBranch.id.toString(),
+      code: "MAIN",
+      isDefault: true,
+    });
+
+    const outsiderResponse = await request(app)
+      .get(`/user/api/v1/organizations/${organization.id}/branches`)
+      .set("Authorization", authHeader(outsider.id));
+
+    expect(outsiderResponse.status).toBe(403);
+  });
+
+  it("orders branches with the default first and hides deleted ones", async () => {
+    const { organization, owner } = await createTestOrganization();
+
+    await prisma.branch.create({
+      data: {
+        organizationId: organization.id,
+        name: "Aba Branch",
+        code: "ABA",
+      },
+    });
+    await prisma.branch.create({
+      data: {
+        organizationId: organization.id,
+        name: "Closed Branch",
+        code: "OLD",
+        deletedAt: new Date(),
+      },
+    });
+
+    const response = await request(app)
+      .get(`/user/api/v1/organizations/${organization.id}/branches`)
+      .set("Authorization", authHeader(owner.id));
+
+    expect(response.status).toBe(200);
+    expect(
+      response.body.data.branches.map((branch: { code: string }) => branch.code),
+    ).toEqual(["MAIN", "ABA"]);
   });
 
   it("rejects numeric organization route ids", async () => {

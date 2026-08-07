@@ -16,6 +16,7 @@ const TABLES = [
   "apps",
   "organization_invitations",
   "organization_members",
+  "branches",
   "transactions",
   "notifications",
   "verification_attempts",

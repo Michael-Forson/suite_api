@@ -27,13 +27,21 @@ if (!/test/i.test(databaseName)) {
 const prismaCliPath = fileURLToPath(
   new URL("../node_modules/prisma/build/index.js", import.meta.url),
 );
-const result = spawnSync(process.execPath, [prismaCliPath, "migrate", "deploy"], {
-  stdio: "inherit",
-  env: {
-    ...process.env,
-    DATABASE_URL: testDatabaseUrl,
+// `db push`, not `migrate deploy`: this repo has no migration history, so
+// `deploy` silently no-ops and leaves the test database behind the schema.
+// `--accept-data-loss` is safe here and avoids an interactive prompt that would
+// hang CI — the guard above already refuses any database not named "*test*".
+const result = spawnSync(
+  process.execPath,
+  [prismaCliPath, "db", "push", "--accept-data-loss"],
+  {
+    stdio: "inherit",
+    env: {
+      ...process.env,
+      DATABASE_URL: testDatabaseUrl,
+    },
   },
-});
+);
 
 if (result.error) {
   console.error(`Failed to run Prisma: ${result.error.message}`);

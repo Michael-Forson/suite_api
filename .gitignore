@@ -3,7 +3,8 @@ node_modules
 .env
 
 /src/generated/prisma
-/prsima/migrations
+/src/generated/prisma-inventory
+/prisma/migrations
 
 # Build outputs
 dist

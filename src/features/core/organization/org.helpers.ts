@@ -18,9 +18,39 @@ export const ORGANIZATION_SELECT = {
   city: true,
   address: true,
   status: true,
+  locationLabelSingular: true,
+  locationLabelPlural: true,
   createdAt: true,
   updatedAt: true,
 } as const;
+
+export const BRANCH_SELECT = {
+  id: true,
+  organizationId: true,
+  name: true,
+  code: true,
+  location: true,
+  isDefault: true,
+  status: true,
+  createdBy: true,
+  createdAt: true,
+  updatedAt: true,
+} as const;
+
+/// Code given to the branch every organization is created with. Orgs that never
+/// open a second location keep this one forever and never see the concept.
+export const DEFAULT_BRANCH_CODE = "MAIN";
+
+export const serializeBranch = <
+  T extends { id: string; organizationId: string; createdBy?: string | null },
+>(
+  branch: T,
+) => ({
+  ...branch,
+  id: branch.id.toString(),
+  organizationId: branch.organizationId.toString(),
+  createdBy: branch.createdBy?.toString() ?? null,
+});
 
 export const ORGANIZATION_PROFILE_FIELDS = [
   "businessType",

@@ -4,6 +4,7 @@ import {
   changeOrganizationStatus,
   createOrganization,
   getOrganizationDetails,
+  listOrganizationBranches,
   listUserOrganizations,
   updateOrganizationProfile,
 } from "./org.controller.js";
@@ -22,6 +23,12 @@ router.get(
   authenticate,
   requireOrganizationMembership,
   getOrganizationDetails,
+);
+router.get(
+  "/:organizationId/branches",
+  authenticate,
+  requireOrganizationMembership,
+  listOrganizationBranches,
 );
 router.patch(
   "/:organizationId/profile",
