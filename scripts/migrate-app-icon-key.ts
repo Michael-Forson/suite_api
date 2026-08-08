@@ -16,7 +16,7 @@
  *   npx tsx scripts/migrate-app-icon-key.ts --apply   # writes it
  */
 import "dotenv/config";
-import { prisma } from "../src/prisma.js";
+import { prisma } from "../src/core/prisma.js";
 
 const apply = process.argv.includes("--apply");
 

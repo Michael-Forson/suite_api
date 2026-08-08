@@ -2,8 +2,10 @@ node_modules
 # Keep environment variables out of version control
 .env
 
-/src/generated/prisma
-/prsima/migrations
+# Generated Prisma clients live with the app whose schema produced them.
+/src/core/generated/prisma
+/src/Inventory/generated/prisma-inventory
+/prisma/migrations
 
 # Build outputs
 dist

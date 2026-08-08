@@ -1,0 +1,105 @@
+import "dotenv/config";
+import { BillingInterval, BillingProvider } from "../generated/prisma/enums.js";
+import { prisma } from "../prisma.js";
+
+const PLAN_CATALOG = [
+  {
+    id: "11111111-1111-4111-8111-111111111111",
+    name: "Starter",
+    sortOrder: 10,
+    includedAppKeys: [] as string[],
+    prices: [] as Array<{
+      interval: BillingInterval;
+      providerPriceId: string;
+      amount?: number;
+      currency: string;
+    }>,
+  },
+  {
+    id: "22222222-2222-4222-8222-222222222222",
+    name: "Growth",
+    sortOrder: 20,
+    includedAppKeys: [] as string[],
+    prices: [],
+  },
+  {
+    id: "33333333-3333-4333-8333-333333333333",
+    name: "Business",
+    sortOrder: 30,
+    includedAppKeys: [] as string[],
+    prices: [],
+  },
+];
+
+async function main() {
+  for (const planConfig of PLAN_CATALOG) {
+    const plan = await prisma.subscriptionPlan.upsert({
+      where: { id: planConfig.id },
+      create: {
+        id: planConfig.id,
+        name: planConfig.name,
+        sortOrder: planConfig.sortOrder,
+      },
+      update: {
+        name: planConfig.name,
+        sortOrder: planConfig.sortOrder,
+        isActive: true,
+      },
+    });
+
+    const apps = planConfig.includedAppKeys.length
+      ? await prisma.app.findMany({
+          where: { key: { in: planConfig.includedAppKeys } },
+          select: { id: true },
+        })
+      : [];
+
+    await prisma.subscriptionPlanApp.deleteMany({
+      where: { planId: plan.id },
+    });
+
+    if (apps.length) {
+      await prisma.subscriptionPlanApp.createMany({
+        data: apps.map((app) => ({ planId: plan.id, appId: app.id })),
+        skipDuplicates: true,
+      });
+    }
+
+    for (const price of planConfig.prices) {
+      await prisma.subscriptionPlanPrice.upsert({
+        where: {
+          planId_provider_billingInterval: {
+            planId: plan.id,
+            provider: BillingProvider.STRIPE,
+            billingInterval: price.interval,
+          },
+        },
+        create: {
+          planId: plan.id,
+          provider: BillingProvider.STRIPE,
+          billingInterval: price.interval,
+          providerPriceId: price.providerPriceId,
+          amount: price.amount,
+          currency: price.currency,
+        },
+        update: {
+          providerPriceId: price.providerPriceId,
+          amount: price.amount,
+          currency: price.currency,
+          isActive: true,
+        },
+      });
+    }
+  }
+
+  console.log("Seeded subscription plans.");
+}
+
+main()
+  .catch((error) => {
+    console.error("Subscription seed failed:", error);
+    process.exit(1);
+  })
+  .finally(async () => {
+    await prisma.$disconnect();
+  });

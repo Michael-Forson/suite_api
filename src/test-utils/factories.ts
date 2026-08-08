@@ -11,8 +11,9 @@ import {
   OrganizationRole,
   AppPermissionStatus,
   RoleStatus,
-} from "../generated/prisma/enums.js";
-import { prisma } from "../prisma.js";
+} from "../core/generated/prisma/enums.js";
+import { prisma } from "../core/prisma.js";
+import { DEFAULT_BRANCH_CODE } from "../core/core-user/organization/org.helpers.js";
 import crypto from "crypto";
 import { hashPassword } from "../utils/password.js";
 
@@ -49,7 +50,9 @@ export async function createTestUser(overrides: Record<string, any> = {}) {
   });
 }
 
-export async function createTestSuperAdmin(overrides: Record<string, any> = {}) {
+export async function createTestSuperAdmin(
+  overrides: Record<string, any> = {},
+) {
   const id = nextId("super-admin");
 
   return prisma.superAdmin.create({
@@ -90,7 +93,20 @@ export async function createTestOrganization(
     },
   });
 
-  return { organization, owner: organizationOwner, ownerMember };
+  // Mirrors `createOrganization`: every organization has a default branch, so
+  // the factory must produce one too or tests exercise a state production can
+  // never reach.
+  const defaultBranch = await prisma.branch.create({
+    data: {
+      organizationId: organization.id,
+      name: organization.name,
+      code: DEFAULT_BRANCH_CODE,
+      isDefault: true,
+      createdBy: organizationOwner.id,
+    },
+  });
+
+  return { organization, owner: organizationOwner, ownerMember, defaultBranch };
 }
 
 export async function createTestMember({

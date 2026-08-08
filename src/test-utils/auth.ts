@@ -1,4 +1,4 @@
-import { generateAccessToken } from "../utils/tokens.js";
+import { generateAccessToken } from "../core/utils/tokens.js";
 
 export function authHeader(userId: string) {
   return `Bearer ${generateAccessToken(userId, "user")}`;

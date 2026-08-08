@@ -20,7 +20,14 @@
     "seed:subscriptions": "tsx prisma/seed-subscriptions.ts",
     "seed:app-versions": "tsx prisma/seeds/run.ts app-versions",
     "seed:super-admin": "tsx prisma/seed-super-admin.ts",
-    "seed:banners": "tsx prisma/seeds/run.ts banners"
+    "seed:banners": "tsx prisma/seeds/run.ts banners",
+    "backfill:branches": "tsx prisma/backfill-default-branches.ts",
+    "backfill:locations": "tsx prisma/backfill-default-locations.ts",
+    "inventory:generate": "prisma generate --config prisma.inventory.config.ts",
+    "inventory:migrate": "prisma migrate dev --config prisma.inventory.config.ts",
+    "inventory:migrate:deploy": "prisma migrate deploy --config prisma.inventory.config.ts",
+    "inventory:db:push": "prisma db push --config prisma.inventory.config.ts",
+    "inventory:studio": "prisma studio --config prisma.inventory.config.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1000.0",

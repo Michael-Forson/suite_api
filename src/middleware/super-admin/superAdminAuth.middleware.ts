@@ -1,9 +1,9 @@
 import { NextFunction, Request, Response } from "express";
-import { SuperAdminStatus } from "../../generated/prisma/enums.js";
-import { prisma } from "../../prisma.js";
+import { SuperAdminStatus } from "../../core/generated/prisma/enums.js";
+import { prisma } from "../../core/prisma.js";
 import { parseId } from "../../utils/parseId.js";
-import { isRootSuperAdminEmail } from "../../utils/rootSuperAdmin.js";
-import { verifyAccessToken } from "../../utils/tokens.js";
+import { isRootSuperAdminEmail } from "../../core/utils/rootSuperAdmin.js";
+import { verifyAccessToken } from "../../core/utils/tokens.js";
 
 export interface SuperAdminContext {
   id: string;

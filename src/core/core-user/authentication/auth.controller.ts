@@ -1,0 +1,1669 @@
+import { Request, Response } from "express";
+import asyncHandler from "express-async-handler";
+import { prisma } from "../../prisma.js";
+import {
+  AuthProvider,
+  CodeType,
+  Gender,
+} from "../../generated/prisma/enums.js";
+import {
+  verifyRefreshToken,
+} from "../../utils/tokens.js";
+import { issueUserTokens } from "./auth.helpers.js";
+import {
+  AppleAuthRequestBody,
+  GoogleAuthRequestBody,
+  LoginRequestBody,
+  RefreshTokenRequestBody,
+  RegisterRequestBody,
+  RegisterWithEmailCodeRequestBody,
+  RequestPasswordResetBody,
+  ResetPasswordBody,
+  SendCodeRequestBody,
+  SendLoginCodeRequestBody,
+  UpdateProfileRequestBody,
+  VerifyLoginCodeRequestBody,
+  VerifyPhoneCodeRequestBody,
+} from "./auth.types.js";
+import {
+  capitalizeFirstLetter,
+  isValidCode,
+  isValidEmail,
+  isValidPhone,
+  isValidPassword,
+  parseDob,
+} from "../../../utils/validators.js";
+import {
+  consumeVerificationCode,
+  createVerificationCode,
+} from "../../utils/verificationCodes.js";
+import { dispatchOtp, type OtpChannel } from "../../../utils/otp.js";
+import { verifyGoogleIdToken } from "../../../utils/googleAuth.js";
+import {
+  sendEmailVerificationCode,
+  validateVerificationCode,
+} from "../../utils/verification.service.js";
+import { AuthRequest } from "../../../middleware/users/auth.middleware.js";
+import { checkUserAvailability } from "../../utils/user.utils.js";
+import {
+  trackVerificationAttempt,
+  resetVerificationAttempts,
+} from "../../utils/verificationAttempts.js";
+import { comparePassword, hashPassword } from "../../../utils/password.js";
+import { parseId } from "../../../utils/parseId.js";
+import {
+  sendPasswordResetCode,
+  validateAndConsumeResetCode,
+} from "../../utils/password-reset.service.js";
+
+export const registerUser = asyncHandler(
+  async (req: Request, res: Response) => {
+    const {
+      firstName,
+      lastName,
+      email,
+      phone,
+      password,
+      gender,
+      dob,
+    }: RegisterRequestBody = req.body;
+
+    if (!firstName || !lastName || !password) {
+      res.status(400).json({
+        success: false,
+        message:
+          "Missing required fields: firstName, lastName and password are required",
+      });
+      return;
+    }
+
+    const identifiers = [email, phone].filter(Boolean);
+    if (identifiers.length !== 1) {
+      res.status(400).json({
+        success: false,
+        message: "Provide exactly one of email or phone",
+      });
+      return;
+    }
+
+    if (!isValidPassword(password)) {
+      res.status(400).json({
+        success: false,
+        message: "Password must be at least 4 characters",
+      });
+      return;
+    }
+
+    if (email && !isValidEmail(email)) {
+      res.status(400).json({
+        success: false,
+        message: "Invalid email format",
+      });
+      return;
+    }
+
+    if (phone && !isValidPhone(phone)) {
+      res.status(400).json({
+        success: false,
+        message: "Invalid phone format",
+      });
+      return;
+    }
+
+    try {
+      const availability = await checkUserAvailability({ email, phone });
+      if (!availability.available) {
+        res.status(409).json({
+          success: false,
+          message: availability.message,
+        });
+        return;
+      }
+    } catch (error: any) {
+      console.error("Database query error:", {
+        message: error.message,
+        code: error.code,
+        stack: error.stack,
+      });
+      if (error.message?.includes("timeout") || error.code === "P1008") {
+        res.status(503).json({
+          success: false,
+          message: "Database connection timeout. Please try again later.",
+        });
+        return;
+      }
+      res.status(500).json({
+        success: false,
+        message:
+          "An error occurred while processing your request. Please try again.",
+      });
+      return;
+    }
+
+    const dobDate = parseDob(dob);
+    if (dob && !dobDate) {
+      res.status(400).json({
+        success: false,
+        message: "Invalid date of birth format",
+      });
+      return;
+    }
+
+    try {
+      const hashedPassword = await hashPassword(password);
+
+      const user = await prisma.user.create({
+        data: {
+          firstName: capitalizeFirstLetter(firstName) ?? null,
+          lastName: capitalizeFirstLetter(lastName) ?? null,
+          email: email ?? null,
+          phone: phone ?? null,
+          password: hashedPassword,
+          gender: gender || null,
+          dob: dobDate || null,
+          authProvider: email ? AuthProvider.EMAIL : AuthProvider.PHONE,
+        },
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          email: true,
+          phone: true,
+          gender: true,
+          dob: true,
+          authProvider: true,
+          isActive: true,
+          emailVerifiedAt: true,
+          phoneVerifiedAt: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      });
+
+      const userResponse = {
+        ...user,
+        id: user.id.toString(),
+      };
+
+      res.status(201).json({
+        success: true,
+        message: "User registered successfully",
+        data: userResponse,
+      });
+    } catch (error: any) {
+      console.error("Database error creating user:", {
+        message: error.message,
+        code: error.code,
+        stack: error.stack,
+      });
+      res.status(500).json({
+        success: false,
+        message: "An internal server error occurred. Please try again.",
+      });
+      return;
+    }
+  },
+);
+
+export const loginUser = asyncHandler(async (req: Request, res: Response) => {
+  const { email, phone, password }: LoginRequestBody = req.body;
+
+  if (!password) {
+    res.status(400).json({
+      success: false,
+      message: "Password is required",
+    });
+    return;
+  }
+
+  const identifiers = [email, phone].filter(Boolean);
+  if (identifiers.length !== 1) {
+    res.status(400).json({
+      success: false,
+      message: "Provide exactly one of email or phone",
+    });
+    return;
+  }
+
+  if (email && !isValidEmail(email)) {
+    res.status(400).json({
+      success: false,
+      message: "Invalid email format",
+    });
+    return;
+  }
+
+  if (phone && !isValidPhone(phone)) {
+    res.status(400).json({
+      success: false,
+      message: "Invalid phone format",
+    });
+    return;
+  }
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: phone ? { phone } : { email },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        email: true,
+        phone: true,
+        password: true,
+        gender: true,
+        dob: true,
+        authProvider: true,
+        isActive: true,
+        emailVerifiedAt: true,
+        phoneVerifiedAt: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    if (!user || !user.password) {
+      res.status(401).json({
+        success: false,
+        message: "Invalid credentials",
+      });
+      return;
+    }
+
+    if (!user.isActive) {
+      res.status(403).json({
+        success: false,
+        message: "This account has been deactivated.",
+      });
+      return;
+    }
+
+    const passwordMatches = await comparePassword(password, user.password);
+    if (!passwordMatches) {
+      res.status(401).json({
+        success: false,
+        message: "Invalid credentials",
+      });
+      return;
+    }
+
+    const tokens = await issueUserTokens(user.id);
+    const { password: _password, ...safeUser } = user;
+
+    res.status(200).json({
+      success: true,
+      message: "Login successful",
+      data: {
+        user: { ...safeUser, id: safeUser.id.toString() },
+        tokens,
+      },
+    });
+  } catch (error: any) {
+    console.error("Login error:", {
+      message: error.message,
+      code: error.code,
+      stack: error.stack,
+    });
+    res.status(500).json({
+      success: false,
+      message: "An internal server error occurred. Please try again.",
+    });
+  }
+});
+
+// Passwordless email login — step 1: email a one-time code. The code is created
+// and delivered by the shared verification service (same infra as email
+// verification). We don't reveal whether an account exists; the account is
+// found-or-created on verify, mirroring the Google flow.
+export const sendLoginCode = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { email }: SendLoginCodeRequestBody = req.body;
+
+    if (!email || !isValidEmail(email)) {
+      res.status(400).json({
+        success: false,
+        message: "Invalid email format",
+      });
+      return;
+    }
+
+    try {
+      const existing = await prisma.user.findUnique({
+        where: { email },
+        select: { firstName: true, isActive: true },
+      });
+
+      if (existing && !existing.isActive) {
+        res.status(403).json({
+          success: false,
+          message: "This account has been deactivated.",
+        });
+        return;
+      }
+
+      await sendEmailVerificationCode(email, {
+        codeLength: 6,
+        userName: existing?.firstName ?? "",
+      });
+
+      res.status(200).json({
+        success: true,
+        message: "We sent a login code to your email.",
+      });
+    } catch (error: any) {
+      console.error("Error in sendLoginCode:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to send login code. Please try again.",
+      });
+    }
+  },
+);
+
+// Passwordless email login — step 2: verify the code and log the user in,
+// creating the account on first use. Returns the same { user, tokens } shape as
+// the other continue-with providers.
+export const verifyLoginCode = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { email, code }: VerifyLoginCodeRequestBody = req.body;
+
+    if (!email || !isValidEmail(email)) {
+      res.status(400).json({
+        success: false,
+        message: "Invalid email format",
+      });
+      return;
+    }
+
+    const result = await validateVerificationCode(email, code, 6);
+    if (result.valid === false) {
+      res.status(400).json({ success: false, message: result.message });
+      return;
+    }
+
+    const userSelect = {
+      id: true,
+      firstName: true,
+      lastName: true,
+      email: true,
+      phone: true,
+      gender: true,
+      dob: true,
+      emailVerifiedAt: true,
+      phoneVerifiedAt: true,
+      isActive: true,
+      authProvider: true,
+    } as const;
+
+    try {
+      let user = await prisma.user.findUnique({
+        where: { email },
+        select: userSelect,
+      });
+
+      if (!user) {
+        user = await prisma.user.create({
+          data: {
+            email,
+            authProvider: AuthProvider.EMAIL,
+            emailVerifiedAt: new Date(),
+          },
+          select: userSelect,
+        });
+      } else if (!user.isActive) {
+        res.status(403).json({
+          success: false,
+          message: "This account has been deactivated.",
+        });
+        return;
+      } else if (!user.emailVerifiedAt) {
+        // Proving control of the inbox verifies the email.
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { emailVerifiedAt: new Date() },
+        });
+      }
+
+      const tokens = await issueUserTokens(user.id);
+
+      res.status(200).json({
+        success: true,
+        message: "Login successful",
+        data: {
+          user: { ...user, id: user.id.toString() },
+          tokens,
+        },
+      });
+    } catch (error: any) {
+      console.error("Error in verifyLoginCode:", error);
+      res.status(500).json({
+        success: false,
+        message: "An internal server error occurred. Please try again.",
+      });
+    }
+  },
+);
+
+// Register with a password, verifying the email via a one-time code first
+// (the code is requested through /auth/send-login-code). No name is collected
+// here — it's captured later via the profile update. Creates a new account, or
+// upgrades a passwordless (code-only) account by setting its password.
+export const registerWithEmailCode = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { email, password, code }: RegisterWithEmailCodeRequestBody = req.body;
+
+    if (!email || !isValidEmail(email)) {
+      res.status(400).json({ success: false, message: "Invalid email format" });
+      return;
+    }
+
+    if (!isValidPassword(password)) {
+      res.status(400).json({
+        success: false,
+        message: "Password must be at least 4 characters",
+      });
+      return;
+    }
+
+    const result = await validateVerificationCode(email, code, 6);
+    if (result.valid === false) {
+      res.status(400).json({ success: false, message: result.message });
+      return;
+    }
+
+    const userSelect = {
+      id: true,
+      firstName: true,
+      lastName: true,
+      email: true,
+      phone: true,
+      gender: true,
+      dob: true,
+      emailVerifiedAt: true,
+      phoneVerifiedAt: true,
+      isActive: true,
+      authProvider: true,
+    } as const;
+
+    try {
+      const existing = await prisma.user.findUnique({
+        where: { email },
+        select: { id: true, password: true, isActive: true },
+      });
+
+      if (existing && !existing.isActive) {
+        res.status(403).json({
+          success: false,
+          message: "This account has been deactivated.",
+        });
+        return;
+      }
+
+      if (existing && existing.password) {
+        res.status(409).json({
+          success: false,
+          message: "An account with this email already exists. Please log in.",
+        });
+        return;
+      }
+
+      const hashedPassword = await hashPassword(password);
+
+      const user = existing
+        ? await prisma.user.update({
+            where: { id: existing.id },
+            data: {
+              password: hashedPassword,
+              authProvider: AuthProvider.EMAIL,
+              emailVerifiedAt: new Date(),
+            },
+            select: userSelect,
+          })
+        : await prisma.user.create({
+            data: {
+              email,
+              password: hashedPassword,
+              authProvider: AuthProvider.EMAIL,
+              emailVerifiedAt: new Date(),
+            },
+            select: userSelect,
+          });
+
+      const tokens = await issueUserTokens(user.id);
+
+      res.status(201).json({
+        success: true,
+        message: "Registration successful",
+        data: {
+          user: { ...user, id: user.id.toString() },
+          tokens,
+        },
+      });
+    } catch (error: any) {
+      console.error("Error in registerWithEmailCode:", error);
+      res.status(500).json({
+        success: false,
+        message: "An internal server error occurred. Please try again.",
+      });
+    }
+  },
+);
+
+export const requestPasswordReset = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { email, phone }: RequestPasswordResetBody = req.body;
+
+    const identifiers = [email, phone].filter(Boolean);
+    if (identifiers.length !== 1) {
+      res.status(400).json({
+        success: false,
+        message: "Provide exactly one of email or phone",
+      });
+      return;
+    }
+
+    if (email && !isValidEmail(email)) {
+      res.status(400).json({
+        success: false,
+        message: "Invalid email format",
+      });
+      return;
+    }
+
+    if (phone && !isValidPhone(phone)) {
+      res.status(400).json({
+        success: false,
+        message: "Invalid phone format",
+      });
+      return;
+    }
+
+    const identifier = phone || email!;
+    const successMessage =
+      "If an account exists for this contact, a password reset code has been sent.";
+
+    try {
+      const user = await prisma.user.findUnique({
+        where: phone ? { phone } : { email },
+        select: {
+          firstName: true,
+          isActive: true,
+        },
+      });
+
+      if (user?.isActive) {
+        await sendPasswordResetCode(identifier, {
+          firstName: user.firstName ?? undefined,
+        });
+      }
+
+      res.status(200).json({
+        success: true,
+        message: successMessage,
+      });
+    } catch (error: any) {
+      console.error("Password reset request error:", {
+        message: error.message,
+        code: error.code,
+        stack: error.stack,
+      });
+      res.status(500).json({
+        success: false,
+        message: "Failed to send password reset code. Please try again.",
+      });
+    }
+  },
+);
+
+export const resetPassword = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { email, phone, code, password }: ResetPasswordBody = req.body;
+
+    const identifiers = [email, phone].filter(Boolean);
+    if (identifiers.length !== 1) {
+      res.status(400).json({
+        success: false,
+        message: "Provide exactly one of email or phone",
+      });
+      return;
+    }
+
+    if (email && !isValidEmail(email)) {
+      res.status(400).json({
+        success: false,
+        message: "Invalid email format",
+      });
+      return;
+    }
+
+    if (phone && !isValidPhone(phone)) {
+      res.status(400).json({
+        success: false,
+        message: "Invalid phone format",
+      });
+      return;
+    }
+
+    if (!isValidCode(code, 6)) {
+      res.status(400).json({
+        success: false,
+        message: "Invalid reset code format. Code must be 6 digits.",
+      });
+      return;
+    }
+
+    if (!isValidPassword(password)) {
+      res.status(400).json({
+        success: false,
+        message: "Password must be at least 4 characters",
+      });
+      return;
+    }
+
+    const identifier = phone || email!;
+    const ipAddress = (req.ip || req.socket.remoteAddress || "unknown").replace(
+      "::ffff:",
+      "",
+    );
+    const attemptCheck = await trackVerificationAttempt(identifier, ipAddress);
+
+    if (!attemptCheck.allowed) {
+      res.status(429).json({
+        success: false,
+        message: "Too many reset attempts. Please try again later.",
+      });
+      return;
+    }
+
+    try {
+      const user = await prisma.user.findUnique({
+        where: phone ? { phone } : { email },
+        select: {
+          id: true,
+          isActive: true,
+        },
+      });
+
+      if (!user || !user.isActive) {
+        res.status(400).json({
+          success: false,
+          message: "Invalid or incorrect reset code.",
+        });
+        return;
+      }
+
+      const resetCheck = await validateAndConsumeResetCode(identifier, code);
+      if (resetCheck.valid === false) {
+        res.status(400).json({
+          success: false,
+          message: resetCheck.message,
+        });
+        return;
+      }
+
+      const hashedPassword = await hashPassword(password);
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { password: hashedPassword },
+      });
+
+      await resetVerificationAttempts(identifier, ipAddress);
+
+      res.status(200).json({
+        success: true,
+        message: "Password reset successfully",
+      });
+    } catch (error: any) {
+      console.error("Password reset error:", {
+        message: error.message,
+        code: error.code,
+        stack: error.stack,
+      });
+      res.status(500).json({
+        success: false,
+        message: "Failed to reset password. Please try again.",
+      });
+    }
+  },
+);
+
+export const sendPhoneVerificationCode = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { phone, type, channel = "both" }: SendCodeRequestBody = req.body;
+
+    const codeType = type || "ACTIVATION";
+    const prismaCodeType = CodeType[codeType as keyof typeof CodeType];
+
+    if (!prismaCodeType) {
+      res.status(400).json({
+        success: false,
+        message: "Invalid code type",
+      });
+      return;
+    }
+
+    if (prismaCodeType === CodeType.RESET) {
+      res.status(400).json({
+        success: false,
+        message: "Use the password reset endpoints to request reset codes",
+      });
+      return;
+    }
+
+    if (!phone) {
+      res.status(400).json({
+        success: false,
+        message: "Phone number is required",
+      });
+      return;
+    }
+
+    if (!isValidPhone(phone)) {
+      res.status(400).json({
+        success: false,
+        message: "Invalid phone format",
+      });
+      return;
+    }
+
+    const identifier = phone;
+
+    if (codeType === "LOGIN") {
+      try {
+        const user = await prisma.user.findUnique({
+          where: { phone },
+        });
+
+        if (!user) {
+          res.status(404).json({
+            success: false,
+            message:
+              "We couldn't find an account with this phone number. Would you like to create one?",
+          });
+          return;
+        }
+      } catch (error: any) {
+        console.error("Database check error:", error);
+        res.status(500).json({
+          success: false,
+          message: "An error occurred while checking your account.",
+        });
+        return;
+      }
+    }
+
+    let codeRecord;
+
+    try {
+      codeRecord = await createVerificationCode(identifier, prismaCodeType);
+    } catch (error: any) {
+      console.error("Database error creating verification code:", {
+        message: error.message,
+        code: error.code,
+        stack: error.stack,
+      });
+      res.status(500).json({
+        success: false,
+        message: "An internal server error occurred. Please try again.",
+      });
+      return;
+    }
+
+    try {
+      await dispatchOtp(phone, codeRecord.code, channel as OtpChannel);
+    } catch (error: any) {
+      console.error("Verification code delivery error:", {
+        message: error.message,
+        stack: error.stack,
+      });
+      res.status(500).json({
+        success: false,
+        message: "Failed to send verification code. Please try again.",
+      });
+      return;
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Verification code sent",
+    });
+  },
+);
+
+export const verifyPhoneCode = asyncHandler(
+  async (req: AuthRequest, res: Response) => {
+    const { phone, code, type }: VerifyPhoneCodeRequestBody = req.body;
+
+    const codeType = type || "ACTIVATION";
+    const prismaCodeType = CodeType[codeType as keyof typeof CodeType];
+
+    if (!prismaCodeType) {
+      res.status(400).json({
+        success: false,
+        message: "Invalid code type",
+      });
+      return;
+    }
+
+    if (prismaCodeType === CodeType.RESET) {
+      res.status(400).json({
+        success: false,
+        message:
+          "Password reset codes must be verified in the password reset flow",
+      });
+      return;
+    }
+
+    if (!phone) {
+      res.status(400).json({
+        success: false,
+        message: "Phone number is required",
+      });
+      return;
+    }
+
+    if (!isValidPhone(phone)) {
+      res.status(400).json({
+        success: false,
+        message: "Invalid phone format",
+      });
+      return;
+    }
+
+    const identifier = phone;
+
+    if (!isValidCode(code, 6)) {
+      res.status(400).json({
+        success: false,
+        message: "Invalid verification code format. Code must be 6 digits.",
+      });
+      return;
+    }
+
+    const ipAddress = (req.ip || req.socket.remoteAddress || "unknown").replace(
+      "::ffff:",
+      "",
+    );
+    const attemptCheck = await trackVerificationAttempt(identifier, ipAddress);
+
+    if (!attemptCheck.allowed) {
+      res.status(429).json({
+        success: false,
+        message: `Too many verification attempts. Please try again later.`,
+      });
+      return;
+    }
+
+    let user;
+    try {
+      user = await prisma.user.findUnique({
+        where: phone ? { phone: identifier } : { email: identifier },
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          email: true,
+          phone: true,
+          gender: true,
+          dob: true,
+          emailVerifiedAt: true,
+          phoneVerifiedAt: true,
+          isActive: true,
+          authProvider: true,
+        },
+      });
+    } catch (error: any) {
+      console.error("Database error fetching user:", {
+        message: error.message,
+        code: error.code,
+        stack: error.stack,
+      });
+      res.status(500).json({
+        success: false,
+        message: "An internal server error occurred. Please try again.",
+      });
+      return;
+    }
+
+    if (!user) {
+      res.status(404).json({
+        success: false,
+        message: "User not found with this phone number",
+      });
+      return;
+    }
+
+    if (!user.isActive) {
+      res.status(403).json({
+        success: false,
+        message: "This account has been deactivated.",
+      });
+      return;
+    }
+
+  
+    let verificationCheck;
+    try {
+      verificationCheck = await consumeVerificationCode(
+        identifier,
+        code,
+        prismaCodeType,
+      );
+    } catch (error: any) {
+      console.error("Database error consuming verification code:", {
+        message: error.message,
+        code: error.code,
+        stack: error.stack,
+      });
+      res.status(500).json({
+        success: false,
+        message: "An internal server error occurred. Please try again.",
+      });
+      return;
+    }
+
+    if (!verificationCheck.valid) {
+      const message =
+        verificationCheck.reason === "expired"
+          ? "Verification code has expired. Please request a new one."
+          : "Invalid or incorrect verification code";
+      res.status(400).json({ success: false, message });
+      return;
+    }
+  const authenticatedUserId = req.userId ? req.userId : null;
+    const isSocialMerge =
+      authenticatedUserId &&
+      authenticatedUserId !== user.id &&
+      codeType === "ACTIVATION";
+
+    try {
+      if (isSocialMerge) {
+        const socialUser = await prisma.user.findUnique({
+          where: { id: authenticatedUserId },
+          select: {
+            authProvider: true,
+            phone: true,
+            googleId: true,
+            appleId: true,
+            email: true,
+            firstName: true,
+            lastName: true,
+          },
+        });
+
+        const isGoogle =
+          socialUser?.authProvider === AuthProvider.GOOGLE &&
+          !!socialUser.googleId;
+        const isApple =
+          socialUser?.authProvider === AuthProvider.APPLE &&
+          !!socialUser.appleId;
+
+        if (!socialUser || socialUser.phone || (!isGoogle && !isApple)) {
+          res.status(400).json({
+            success: false,
+            message:
+              "Account linking is only available for social accounts without a phone number.",
+          });
+          return;
+        }
+
+        const mergedUser = await prisma.$transaction(async (tx) => {
+          const freshPhoneUser = await tx.user.findUnique({
+            where: { id: user.id },
+            select: { email: true },
+          });
+
+          if (
+            freshPhoneUser?.email &&
+            freshPhoneUser.email !== socialUser.email
+          ) {
+            throw new Error("LINKING_BLOCKED");
+          }
+
+          await tx.user.update({
+            where: { id: authenticatedUserId },
+            data: {
+              googleId: null,
+              appleId: null,
+              email: null,
+              isActive: false,
+            },
+          });
+
+          const merged = await tx.user.update({
+            where: { id: user.id },
+            data: {
+              ...(isGoogle ? { googleId: socialUser.googleId } : {}),
+              ...(isApple ? { appleId: socialUser.appleId } : {}),
+              authProvider: socialUser.authProvider,
+              ...(!user.email && socialUser.email
+                ? { email: socialUser.email, emailVerifiedAt: new Date() }
+                : {}),
+              phoneVerifiedAt: new Date(),
+              firstName: user.firstName || socialUser.firstName || undefined,
+              lastName: user.lastName || socialUser.lastName || undefined,
+            },
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              email: true,
+              phone: true,
+              gender: true,
+              dob: true,
+              emailVerifiedAt: true,
+              phoneVerifiedAt: true,
+              isActive: true,
+              authProvider: true,
+            },
+          });
+
+          await tx.notification.updateMany({
+            where: { userId: authenticatedUserId },
+            data: { userId: user.id },
+          });
+
+          await tx.transaction.updateMany({
+            where: { userId: authenticatedUserId },
+            data: { userId: user.id },
+          });
+
+          return merged;
+        });
+
+        await resetVerificationAttempts(identifier, ipAddress);
+
+        const tokens = await issueUserTokens(mergedUser.id);
+
+        res.status(201).json({
+          success: true,
+          message: "Phone verified and account linked successfully",
+          data: {
+            user: { ...mergedUser, id: mergedUser.id.toString() },
+            tokens,
+          },
+        });
+        return;
+      }
+
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { phoneVerifiedAt: new Date() },
+      });
+    } catch (error: any) {
+      if (error.message === "LINKING_BLOCKED") {
+        res.status(409).json({
+          success: false,
+          message:
+            "This phone number is already associated with another account.",
+        });
+        return;
+      }
+      console.error("Database error updating user:", {
+        message: error.message,
+        code: error.code,
+        stack: error.stack,
+      });
+      res.status(500).json({
+        success: false,
+        message: "An internal server error occurred. Please try again.",
+      });
+      return;
+    }
+
+    await resetVerificationAttempts(identifier, ipAddress);
+
+    const tokens = await issueUserTokens(user.id);
+
+    const userResponse = {
+      ...user,
+      id: user.id.toString(),
+      phoneVerifiedAt: new Date(),
+    };
+
+    res.status(201).json({
+      success: true,
+      message: "Phone number verified successfully",
+      data: {
+        user: userResponse,
+        tokens,
+      },
+    });
+  },
+);
+
+export const refreshToken = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { refreshToken }: RefreshTokenRequestBody = req.body;
+
+    if (!refreshToken) {
+      res.status(400).json({
+        success: false,
+        message: "Refresh token is required",
+      });
+      return;
+    }
+
+    try {
+      const decoded = verifyRefreshToken(refreshToken, "user") as {
+        id: string;
+        type?: string;
+      };
+
+      if (decoded.type !== "user") {
+        res.status(401).json({
+          success: false,
+          message: "Invalid token. Please login again.",
+        });
+        return;
+      }
+
+      const userId = parseId(decoded.id);
+      if (!userId) {
+        res.status(401).json({
+          success: false,
+          message: "Invalid token. Please login again.",
+        });
+        return;
+      }
+
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+      });
+
+      if (!user) {
+        res.status(401).json({
+          success: false,
+          message: "User not found. Please login again.",
+        });
+        return;
+      }
+
+      if (!user.isActive) {
+        res.status(401).json({
+          success: false,
+          message: "This account has been deactivated.",
+        });
+        return;
+      }
+
+      const tokens = await issueUserTokens(user.id);
+
+      res.status(200).json({
+        success: true,
+        message: "Token refreshed successfully",
+        data: {
+          tokens,
+        },
+      });
+    } catch (error: any) {
+      console.error("Token refresh error:", {
+        message: error.message,
+        name: error.name,
+      });
+      res.status(401).json({
+        success: false,
+        message: "Invalid or expired refresh token. Please login again.",
+      });
+      return;
+    }
+  },
+);
+
+export const getMe = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const userId = req.userId;
+  if (!userId) {
+    res.status(401).json({ success: false, message: "Unauthorized" });
+    return;
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      id: true,
+      firstName: true,
+      lastName: true,
+      email: true,
+      phone: true,
+      gender: true,
+      dob: true,
+      emailVerifiedAt: true,
+      phoneVerifiedAt: true,
+      isActive: true,
+      authProvider: true,
+    },
+  });
+
+  if (!user) {
+    res.status(404).json({ success: false, message: "User not found" });
+    return;
+  }
+
+  res.status(200).json({
+    success: true,
+    data: { user: { ...user, id: user.id.toString() } },
+  });
+});
+
+export const updateProfile = asyncHandler(
+  async (req: AuthRequest, res: Response) => {
+    const userId = req.userId;
+    if (!userId) {
+      res.status(401).json({ success: false, message: "Unauthorized" });
+      return;
+    }
+    const userBigId = userId;
+
+    const {
+      firstName,
+      lastName,
+      phone,
+      email,
+      gender,
+      dob,
+    }: UpdateProfileRequestBody = req.body;
+
+    if (phone && !isValidPhone(phone)) {
+      res
+        .status(400)
+        .json({ success: false, message: "Invalid phone number format" });
+      return;
+    }
+
+    if (email && !isValidEmail(email)) {
+      res.status(400).json({ success: false, message: "Invalid email format" });
+      return;
+    }
+
+    const validGenders = ["MALE", "FEMALE", "OTHER"];
+    if (gender && !validGenders.includes(gender)) {
+      res.status(400).json({
+        success: false,
+        message: "Gender must be Male, Female, or Other.",
+      });
+      return;
+    }
+
+    const dobDate = dob ? parseDob(dob) : undefined;
+    if (dob && !dobDate) {
+      res
+        .status(400)
+        .json({ success: false, message: "Invalid date of birth format" });
+      return;
+    }
+
+    try {
+      const availability = await checkUserAvailability({
+        email,
+        phone,
+        excludeUserId: userBigId,
+      });
+
+      let skipPhone = false;
+      if (
+        !availability.available &&
+        availability.conflict === "phone" &&
+        phone
+      ) {
+        const currentUser = await prisma.user.findUnique({
+          where: { id: userBigId },
+          select: { authProvider: true, phone: true, email: true },
+        });
+
+        if (
+          currentUser &&
+          !currentUser.phone &&
+          (currentUser.authProvider === AuthProvider.GOOGLE ||
+            currentUser.authProvider === AuthProvider.APPLE)
+        ) {
+          const existingPhoneUser = await prisma.user.findUnique({
+            where: { phone },
+            select: { email: true },
+          });
+
+          if (
+            existingPhoneUser?.email &&
+            existingPhoneUser.email !== currentUser.email
+          ) {
+            res.status(409).json({
+              success: false,
+              message:
+                "This phone number is already associated with another account.",
+            });
+            return;
+          }
+
+          skipPhone = true;
+        } else {
+          res.status(409).json({
+            success: false,
+            message: availability.message,
+          });
+          return;
+        }
+      } else if (!availability.available) {
+        res.status(409).json({
+          success: false,
+          message: availability.message,
+        });
+        return;
+      }
+
+      const updatedUser = await prisma.user.update({
+        where: { id: userBigId },
+        data: {
+          firstName: capitalizeFirstLetter(firstName),
+          lastName: capitalizeFirstLetter(lastName),
+          phone: skipPhone ? undefined : phone || undefined,
+          email: email || undefined,
+          phoneVerifiedAt: phone && !skipPhone ? null : undefined,
+          emailVerifiedAt: email ? null : undefined,
+          gender: (gender as Gender) || undefined,
+          dob: dobDate || undefined,
+        },
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          email: true,
+          phone: true,
+          gender: true,
+          dob: true,
+          authProvider: true,
+          isActive: true,
+          emailVerifiedAt: true,
+          phoneVerifiedAt: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      });
+
+      res.status(200).json({
+        success: true,
+        message: "Profile updated successfully",
+        data: {
+          ...updatedUser,
+          id: updatedUser.id.toString(),
+        },
+      });
+    } catch (error: any) {
+      console.error("Profile update error:", error);
+      res.status(500).json({
+        success: false,
+        message: "An error occurred while updating your profile.",
+      });
+    }
+  },
+);
+
+
+
+export const continueWithGoogle = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { idToken }: GoogleAuthRequestBody = req.body;
+
+    if (!idToken) {
+      res.status(400).json({
+        success: false,
+        message: "Google ID token is required",
+      });
+      return;
+    }
+
+    const identity = await verifyGoogleIdToken(idToken);
+
+    if (!identity) {
+      res.status(401).json({
+        success: false,
+        message: "Invalid or expired Google ID token",
+      });
+      return;
+    }
+
+    const { googleId, email, firstName, lastName } = identity;
+
+    try {
+      let user = await prisma.user.findFirst({
+        where: {
+          OR: [{ email }, { googleId }],
+        },
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          email: true,
+          phone: true,
+          gender: true,
+          dob: true,
+          emailVerifiedAt: true,
+          phoneVerifiedAt: true,
+          isActive: true,
+          authProvider: true,
+        },
+      });
+
+      if (!user) {
+        user = await prisma.user.create({
+          data: {
+            email,
+            googleId,
+            firstName,
+            lastName,
+            authProvider: AuthProvider.GOOGLE,
+            emailVerifiedAt: new Date(),
+          },
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+            phone: true,
+            gender: true,
+            dob: true,
+            emailVerifiedAt: true,
+            phoneVerifiedAt: true,
+            isActive: true,
+            authProvider: true,
+          },
+        });
+      } else if (!user.isActive) {
+        res.status(403).json({
+          success: false,
+          message: "This account has been deactivated.",
+        });
+        return;
+      } else {
+        if (!user.authProvider || user.authProvider !== AuthProvider.GOOGLE) {
+          await prisma.user.update({
+            where: { id: user.id },
+            data: { googleId, authProvider: AuthProvider.GOOGLE },
+          });
+        }
+      }
+
+      const tokens = await issueUserTokens(user.id);
+
+      const userResponse = {
+        ...user,
+        id: user.id.toString(),
+      };
+
+      res.status(200).json({
+        success: true,
+        message: "Google authentication successful",
+        data: {
+          user: userResponse,
+          tokens,
+        },
+      });
+    } catch (error: any) {
+      console.error("Google auth error:", {
+        message: error.message,
+        code: error.code,
+        stack: error.stack,
+      });
+      res.status(500).json({
+        success: false,
+        message:
+          "An error occurred during Google authentication. Please try again.",
+      });
+    }
+  },
+);
+
+export const continueWithApple = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { appleId, email, firstName, lastName }: AppleAuthRequestBody =
+      req.body;
+
+    if (!appleId) {
+      res.status(400).json({
+        success: false,
+        message: "Apple ID is required",
+      });
+      return;
+    }
+
+    if (email && !isValidEmail(email)) {
+      res.status(400).json({
+        success: false,
+        message: "Invalid email format",
+      });
+      return;
+    }
+
+    try {
+      let user = await prisma.user.findFirst({
+        where: {
+          OR: [{ appleId }, ...(email ? [{ email }] : [])],
+        },
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          email: true,
+          phone: true,
+          gender: true,
+          dob: true,
+          emailVerifiedAt: true,
+          phoneVerifiedAt: true,
+          isActive: true,
+          authProvider: true,
+        },
+      });
+
+      if (!user) {
+        user = await prisma.user.create({
+          data: {
+            appleId,
+            email: email ?? null,
+            firstName: firstName ?? null,
+            lastName: lastName ?? null,
+            authProvider: AuthProvider.APPLE,
+            emailVerifiedAt: email ? new Date() : null,
+          },
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+            phone: true,
+            gender: true,
+            dob: true,
+            emailVerifiedAt: true,
+            phoneVerifiedAt: true,
+            isActive: true,
+            authProvider: true,
+          },
+        });
+      } else if (!user.isActive) {
+        res.status(403).json({
+          success: false,
+          message: "This account has been deactivated.",
+        });
+        return;
+      } else {
+        if (!user.authProvider || user.authProvider !== AuthProvider.APPLE) {
+          await prisma.user.update({
+            where: { id: user.id },
+            data: { appleId, authProvider: AuthProvider.APPLE },
+          });
+        }
+      }
+
+      const tokens = await issueUserTokens(user.id);
+
+      const userResponse = {
+        ...user,
+        id: user.id.toString(),
+      };
+
+      res.status(200).json({
+        success: true,
+        message: "Apple authentication successful",
+        data: {
+          user: userResponse,
+          tokens,
+        },
+      });
+    } catch (error: any) {
+      console.error("Apple auth error:", {
+        message: error.message,
+        code: error.code,
+        stack: error.stack,
+      });
+      res.status(500).json({
+        success: false,
+        message:
+          "An error occurred during Apple authentication. Please try again.",
+      });
+    }
+  },
+);
+
+export const deleteAccount = asyncHandler(
+  async (req: AuthRequest, res: Response) => {
+    const userId = req.userId;
+    if (!userId) {
+      res.status(401).json({ success: false, message: "Unauthorized" });
+      return;
+    }
+    const userBigId = userId;
+
+    try {
+      await prisma.$transaction([
+        prisma.user.update({
+          where: { id: userBigId },
+          data: {
+            isActive: false,
+            deletedAt: new Date(),
+            firstName: "Deleted",
+            lastName: "User",
+            email: null,
+            phone: null,
+            googleId: null,
+            appleId: null,
+            password: null,
+            gender: null,
+            dob: null,
+            emailVerifiedAt: null,
+            phoneVerifiedAt: null,
+          },
+        }),
+        prisma.notification.deleteMany({ where: { userId: userBigId } }),
+      ]);
+
+      res.status(200).json({
+        success: true,
+        message: "Your account has been deleted. We're sorry to see you go.",
+      });
+    } catch (error: any) {
+      console.error("Account deletion error:", error);
+      res.status(500).json({
+        success: false,
+        message:
+          "An error occurred while deleting your account. Please try again.",
+      });
+    }
+  },
+);
