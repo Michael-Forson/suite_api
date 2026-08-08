@@ -135,7 +135,7 @@ model VerificationAttempt {
 - **Reset:** Automatically resets after successful verification
 - **Cleanup:** Old records (>24 hours) should be cleaned periodically
 
-**Location:** `src/utils/verificationAttempts.ts`
+**Location:** `src/core/utils/verificationAttempts.ts`
 
 ### How It Works
 
@@ -247,7 +247,7 @@ Rate limit information is returned in response headers:
 Change access token expiration from 1 minute (testing) to production value:
 
 ```typescript
-// src/utils/tokens.ts
+// src/core/utils/tokens.ts
 export const generateAccessToken = (id: any) => {
   return jwt.sign({ id: id.toString() }, process.env.JWT_SECRET!, {
     expiresIn: "24h", // Change from "1m" to "24h" or "7d"
@@ -271,7 +271,7 @@ Schedule periodic cleanup of old verification attempts:
 ```typescript
 // Example using node-cron
 import cron from 'node-cron';
-import { cleanupOldAttempts } from './utils/verificationAttempts';
+import { cleanupOldAttempts } from './core/utils/verificationAttempts';
 
 // Run every day at 3 AM
 cron.schedule('0 3 * * *', async () => {

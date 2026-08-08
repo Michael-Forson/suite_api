@@ -2,26 +2,9 @@ import express from "express";
 import dotenv from "dotenv";
 import cors from "cors";
 import helmet from "helmet";
-import authRoutes from "./features/core/authentication/auth.routes.js";
-import appRoutes, {
-  organizationAppsRouter,
-} from "./features/core/app/app.routes.js";
-import organizationInvitationRoutes from "./features/core/organization-invitation/org_inv.routes.js";
-import organizationMemberRoutes from "./features/core/organization-member/org_mem.routes.js";
-import organizationRoutes from "./features/core/organization/org.routes.js";
-import paymentRoutes from "./features/config/payments/payment.routes.js";
-import {
-  organizationSubscriptionRoutes,
-  subscriptionWebhookRoutes,
-} from "./features/core/subscriptions/subscription.routes.js";
-import notificationRoutes from "./features/config/notification/notification.router.js";
-import configRoutes from "./features/config/config.routes.js";
-import superAdminAuthRoutes from "./features/super-admin/authentication/super_admin_auth.routes.js";
-import superAdminAccountRoutes from "./features/super-admin/account/account.routes.js";
-import superAdminSubscriptionRoutes from "./features/super-admin/subscriptions/subscription_admin.routes.js";
-import superAdminAppRoutes from "./features/super-admin/app/app.routes.js";
-import superAdminRbacRoutes from "./features/super-admin/rbac/rbac.routes.js";
-import appRoleRoutes from "./features/core/app-role/app_role.routes.js";
+import coreUserRoutes from "./core/core-user/core-user.routes.js";
+import superAdminRoutes from "./core/super-admin/super-admin.routes.js";
+import inventoryRoutes from "./Inventory/app/inventory.routes.js";
 import { generalLimiter } from "./middleware/common/rateLimiter.middleware.js";
 
 dotenv.config();
@@ -67,25 +50,11 @@ export function createApp() {
   app.use("/user/api", generalLimiter);
   app.use("/super-admin/api", generalLimiter);
 
-  app.use("/user/api/v1/config", configRoutes);
-  app.use("/user/api/v1/auth", authRoutes);
-  app.use("/user/api/v1/apps", appRoutes);
-  app.use("/user/api/v1/organizations", organizationInvitationRoutes);
-  app.use("/user/api/v1/organizations", organizationMemberRoutes);
-  app.use("/user/api/v1/organizations", organizationSubscriptionRoutes);
-  app.use("/user/api/v1/organizations", organizationAppsRouter);
-  app.use("/user/api/v1/organizations", appRoleRoutes);
-  app.use("/user/api/v1/organizations", organizationRoutes);
-  app.use("/user/api/v1/payments", paymentRoutes);
-  app.use("/user/api/v1/subscriptions", subscriptionWebhookRoutes);
-  app.use("/user/api/v1/notifications", notificationRoutes);
-
-  
-  app.use("/super-admin/api/v1/auth", superAdminAuthRoutes);
-  app.use("/super-admin/api/v1/accounts", superAdminAccountRoutes);
-  app.use("/super-admin/api/v1/subscriptions", superAdminSubscriptionRoutes);
-  app.use("/super-admin/api/v1/apps", superAdminRbacRoutes);
-  app.use("/super-admin/api/v1/apps", superAdminAppRoutes);
+  // One router per app. Each owns every path below its version prefix, so
+  // adding an endpoint is a change inside that app and never a change here.
+  app.use("/user/api/v1", coreUserRoutes);
+  app.use("/user/api/v1", inventoryRoutes);
+  app.use("/super-admin/api/v1", superAdminRoutes);
 
   app.get("/payment/callback", (req, res) => {
     const reference = req.query.reference;

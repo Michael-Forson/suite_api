@@ -17,7 +17,7 @@ Created 6 different rate limiters to protect against various attacks:
 | `registerLimiter` | `/auth/register` | 1 hour | 3/IP | Mass account creation prevention |
 
 ### 2. **Database Verification Attempt Tracking**
-📁 [verificationAttempts.ts](src/utils/verificationAttempts.ts)
+📁 [verificationAttempts.ts](src/core/utils/verificationAttempts.ts)
 📊 Database Model: `VerificationAttempt`
 
 Additional layer of protection that tracks verification attempts per identifier+IP combination:
@@ -101,7 +101,7 @@ model VerificationAttempt {
 
 ### Created Files:
 - ✅ `src/middleware/rateLimiter.middleware.ts` - All rate limiters
-- ✅ `src/utils/verificationAttempts.ts` - DB tracking utilities
+- ✅ `src/core/utils/verificationAttempts.ts` - DB tracking utilities
 - ✅ `SECURITY.md` - Comprehensive security documentation
 - ✅ `RATE_LIMITING_SUMMARY.md` - This file
 
@@ -159,7 +159,7 @@ RateLimit-Reset: 1704304800
 
 1. **Change Access Token Expiration** back from `1m` to `24h`:
    ```typescript
-   // src/utils/tokens.ts
+   // src/core/utils/tokens.ts
    expiresIn: "24h" // Currently set to "1m" for testing
    ```
 

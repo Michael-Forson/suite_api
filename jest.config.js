@@ -2,7 +2,8 @@ export default {
   testEnvironment: "node",
   testTimeout: 15000,
   setupFiles: ["<rootDir>/src/test-utils/setup.ts"],
-  testMatch: ["<rootDir>/src/features/**/*.test.ts"],
+  // `src/**`, not `src/features/**`: the inventory app lives at `src/Inventory`.
+  testMatch: ["<rootDir>/src/**/*.test.ts"],
   // Treat TypeScript files as ESM so features like `import.meta` work,
   // which Prisma's generated client relies on.
   extensionsToTreatAsEsm: [".ts"],

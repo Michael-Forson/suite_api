@@ -22,6 +22,7 @@
     "seed:super-admin": "tsx prisma/seed-super-admin.ts",
     "seed:banners": "tsx prisma/seeds/run.ts banners",
     "backfill:branches": "tsx prisma/backfill-default-branches.ts",
+    "backfill:locations": "tsx prisma/backfill-default-locations.ts",
     "inventory:generate": "prisma generate --config prisma.inventory.config.ts",
     "inventory:migrate": "prisma migrate dev --config prisma.inventory.config.ts",
     "inventory:migrate:deploy": "prisma migrate deploy --config prisma.inventory.config.ts",

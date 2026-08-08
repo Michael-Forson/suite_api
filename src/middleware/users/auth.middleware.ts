@@ -2,7 +2,7 @@ import { Request, Response, NextFunction } from "express";
 import {
   UserOrgAccessClaim,
   verifyAccessToken,
-} from "../../utils/tokens.js";
+} from "../../core/utils/tokens.js";
 import { parseId } from "../../utils/parseId.js";
 
 export interface AuthRequest extends Request {

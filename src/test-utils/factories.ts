@@ -11,9 +11,9 @@ import {
   OrganizationRole,
   AppPermissionStatus,
   RoleStatus,
-} from "../generated/prisma/enums.js";
-import { prisma } from "../prisma.js";
-import { DEFAULT_BRANCH_CODE } from "../features/core/organization/org.helpers.js";
+} from "../core/generated/prisma/enums.js";
+import { prisma } from "../core/prisma.js";
+import { DEFAULT_BRANCH_CODE } from "../core/core-user/organization/org.helpers.js";
 import crypto from "crypto";
 import { hashPassword } from "../utils/password.js";
 
@@ -50,7 +50,9 @@ export async function createTestUser(overrides: Record<string, any> = {}) {
   });
 }
 
-export async function createTestSuperAdmin(overrides: Record<string, any> = {}) {
+export async function createTestSuperAdmin(
+  overrides: Record<string, any> = {},
+) {
   const id = nextId("super-admin");
 
   return prisma.superAdmin.create({
